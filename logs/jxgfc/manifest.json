@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "team_id": "contest2026_113_veladuxingke",
+  "github_login": "jxgfc",
+  "generator": "claude-code-collector@1.2.0",
+  "sessions": [
+    {
+      "session_id": "67f0d950-4610-427c-abb2-485ba5297154",
+      "tool": "claude-code",
+      "started_at": "2026-07-13T13:31:43.892Z",
+      "last_event_at": "2026-07-13T15:21:23.909Z",
+      "event_count": 1309,
+      "raw_event_count": 1796,
+      "file_path": "logs/jxgfc/2026-07-13/claude-code__67f0d950-4610-427c-abb2-485ba5297154.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "mimo-v2.5-pro"
+    }
+  ],
+  "updated_at": "2026-08-07T13:25:22.221985+00:00"
+}
