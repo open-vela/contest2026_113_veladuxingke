@@ -1,0 +1,7 @@
+config CONTEST2026_113_ST7796_TEST
+	bool "Contest 2026 team 113 ST7796 framebuffer test"
+	default n
+	depends on VIDEO_FB && FB_UPDATE
+	---help---
+		Enable the ST7796U2 framebuffer metadata, color, corner, and
+		partial-update validation command.

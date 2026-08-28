@@ -1,0 +1,7 @@
+############################################################################
+# Contest 2026 team 113 LAN panel
+############################################################################
+
+ifneq ($(CONFIG_CONTEST2026_113_LAN_PANEL),)
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_113_lan_panel
+endif

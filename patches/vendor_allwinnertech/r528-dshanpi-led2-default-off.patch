@@ -1,0 +1,18 @@
+diff --git a/chips/r528/drv/gpio/drv_gpio.c b/chips/r528/drv/gpio/drv_gpio.c
+index 535e1e44..eaf79999 100644
+--- a/chips/r528/drv/gpio/drv_gpio.c
++++ b/chips/r528/drv/gpio/drv_gpio.c
+@@ -355,6 +355,13 @@ FAR struct ioexpander_dev_s *r528_gpio_initialize(void)
+   priv = &g_sunxi_gpio_dev;
+   priv->dev.ops = &g_sunxi_gpio_ops;
+ 
++#if defined(CONFIG_ARCH_BOARD_R528S3_DSHANPI)
++  /* USER_LED2 is active low.  Preload the data latch before the lower half
++   * switches PD22 to output mode so the LED stays off during RTOS startup.
++   */
++  hal_gpio_set_data(GPIOD(22), GPIO_DATA_HIGH);
++#endif
++
+   for(i = 0; i < sizeof(maps)/sizeof(maps[0]); i++) {
+       gpio_lower_half(&priv->dev, maps[i].nuttx_pin, maps[i].pin_type, maps[i].nuttx_pin);
+   }

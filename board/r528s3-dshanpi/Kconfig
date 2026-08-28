@@ -1,0 +1,115 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+# The contest board is a custom board, so it does not inherit the vendor
+# board-driver Kconfig through the normal boards/<arch>/<chip>/drivers link.
+source "$BINDIR/../vendor/allwinnertech/boards/r528/drivers/micro_sd/Kconfig"
+source "$BINDIR/../vendor/allwinnertech/boards/r528/drivers/realtek_ieee80211/Kconfig"
+
+config ARCH_BOARD_R528S3_DSHANPI
+	bool "r528 dshanpi"
+	depends on ARCH_CHIP_R528
+	select ARCH_HAVE_LEDS
+	select ARCH_HAVE_BUTTONS
+	select ARCH_HAVE_IRQBUTTONS
+	select ARCH_HAVE_TRUSTZONE if X4B_AP || X4B_TEE
+	select MICRO_TF
+	---help---
+		Enable board support for the Allwinner R528S3-based dshanpi
+		board configuration.
+
+config ARCH_BOARD_PARTITION_TABLE
+        string "board partition table path"
+        default ""
+        ---help---
+                This is a path for the board.
+
+choice
+prompt "choose system fucntion"
+
+config DSHANPI_NSH
+	bool "Enable the NSH fucntion on the 'DSHANPI' board"
+
+endchoice
+
+config R528_ST7796
+	bool "320x480 SPI LCD"
+	default n
+	select LCD
+	select LCD_FRAMEBUFFER
+	select VIDEO_FB
+	select FB_UPDATE
+	select SPI
+	select SPI_EXCHANGE
+	select SPI_DRIVER
+	select R528_SPI1
+	---help---
+		Enable the 320x480 ST7796U2 panel on the DshanPi LCD connector.
+		The driver exposes a 480x320 RGB565 framebuffer through the NuttX
+		LCD framebuffer bridge.
+
+if R528_ST7796
+
+config R528_ST7796_SOFTSPI
+	bool "Use GPIO software SPI"
+	default n
+	---help---
+		Use GPIO bit-banging for transport diagnostics.  The default uses the
+		hardware SPI1 path that previously drove this physical panel.
+
+config R528_ST7796_SPI_FREQUENCY
+	int "Hardware SPI frequency"
+	depends on !R528_ST7796_SOFTSPI
+	range 100000 40000000
+	default 8000000
+
+config R528_ST7796_CS_PIN
+	int "Port D chip-select pin"
+	range 0 22
+	default 10
+
+config R528_ST7796_SCK_PIN
+	int "Port D clock pin"
+	range 0 22
+	default 11
+
+config R528_ST7796_MOSI_PIN
+	int "Port D MOSI pin"
+	range 0 22
+	default 12
+
+config R528_ST7796_DC_PIN
+	int "Port D data/command pin"
+	range 0 22
+	default 14
+
+config R528_ST7796_RESET_PIN
+	int "Port D reset pin"
+	range 0 22
+	default 15
+
+config R528_ST7796_BACKLIGHT_PIN
+	int "Port D backlight pin"
+	range 0 22
+	default 16
+
+config R528_ST7796_BACKLIGHT_ACTIVE_LOW
+	bool "Backlight is active low"
+	default n
+
+config R528_ST7796_SOFTSPI_DELAY_US
+	int "Software SPI half-cycle delay in microseconds"
+	range 1 100
+	default 1
+
+config R528_ST7796_MADCTL
+	hex "LCD MADCTL value"
+	range 0x00 0xff
+	default 0xe8
+	---help---
+		Select 480x320 landscape using MY, MX, MV, and BGR.  This orientation
+		was determined from the physical four-corner color test.
+
+endif # R528_ST7796

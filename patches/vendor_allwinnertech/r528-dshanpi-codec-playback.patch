@@ -1,0 +1,326 @@
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.c b/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.c
+index 5e5bb9ea..c31a5e57 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.c
++++ b/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.c
+@@ -70,7 +70,11 @@ enum {
+ #ifndef CONFIG_BOARD_CONFIG
+ static struct sunxi_codec_param default_param = {
+ 	.digital_vol		= 0x0,
++#ifdef CONFIG_ARCH_BOARD_R528S3_DSHANPI
++	.hpout_vol		= 0x0,
++#else
+ 	.hpout_vol		= 0x3,
++#endif
+ 	.lineout_vol		= 0x1a,
+ 	.mic1gain		= 0x1f,
+ 	.mic2gain		= 0x1f,
+@@ -83,7 +87,11 @@ static struct sunxi_codec_param default_param = {
+ #else
+ 	.gpio_spk		= GPIOB(2),
+ #endif
++#ifdef CONFIG_ARCH_BOARD_R528S3_DSHANPI
++	.pa_msleep_time 	= 160,
++#else
+ 	.pa_msleep_time 	= 20,
++#endif
+ 	.pa_level		= GPIO_DATA_HIGH,
+ 	.adcdrc_cfg     	= 0,
+ 	.adchpf_cfg     	= 1,
+@@ -119,6 +127,56 @@ static const struct sample_rate sample_rate_conv[] = {
+ 	{88200, 7}, /* audio spec do not supply 88.2k */
+ };
+ 
++static void sunxi_codec_ramp_update_bits(struct snd_codec *codec,
++					 uint32_t mask, uint32_t value)
++{
++	uint32_t old;
++	uint32_t new;
++
++	if (mask & RAMP_W1C_MASK) {
++		snd_err("ramp update contains W1C bits: mask=0x%08x\n",
++			(unsigned int)mask);
++		return;
++	}
++
++	old = snd_codec_read(codec, SUNXI_RAMP_ANA_CTL);
++	new = ((old & ~mask) | (value & mask)) & ~RAMP_W1C_MASK;
++	if ((old & mask) != (new & mask))
++		snd_codec_write(codec, SUNXI_RAMP_ANA_CTL, new);
++}
++
++static void sunxi_codec_ramp_ack(struct snd_codec *codec, uint32_t status)
++{
++	uint32_t value;
++
++	status &= RAMP_W1C_MASK;
++	if (!status)
++		return;
++
++	value = snd_codec_read(codec, SUNXI_RAMP_ANA_CTL);
++	value = (value & ~RAMP_W1C_MASK) | status;
++	snd_codec_write(codec, SUNXI_RAMP_ANA_CTL, value);
++}
++
++static void sunxi_codec_ramp_wait_and_ack(struct snd_codec *codec,
++					  uint32_t status)
++{
++	int retries;
++
++	for (retries = 0; retries < 120; retries++) {
++		if (snd_codec_read(codec, SUNXI_RAMP_ANA_CTL) & status) {
++			sunxi_codec_ramp_ack(codec, status);
++			return;
++		}
++
++		hal_msleep(1);
++	}
++
++	snd_err("ramp completion timeout: status=0x%08x ramp=0x%08x\n",
++		(unsigned int)status,
++		(unsigned int)snd_codec_read(codec, SUNXI_RAMP_ANA_CTL));
++}
++
+ static int sunxi_get_adc_ch(struct snd_codec *codec)
+ {
+ 	uint32_t reg_val;
+@@ -707,12 +765,12 @@ static void sunxi_codec_init(struct snd_codec *codec)
+ 	if (sunxi_codec->chip_ver == CHIP_VER_A) {
+ 		snd_codec_update_bits(codec, SUNXI_POWER_ANA_CTL,
+ 			(0x1<<HPLDO_EN), (0x1<<HPLDO_EN));
+-		snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
++		sunxi_codec_ramp_update_bits(codec,
+ 			(0x1<<RMCEN), (0x1<<RMCEN));
+ 	} else {
+ 		snd_codec_update_bits(codec, SUNXI_POWER_ANA_CTL,
+ 			(0x1<<HPLDO_EN), (0x0<<HPLDO_EN));
+-		snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
++		sunxi_codec_ramp_update_bits(codec,
+ 			(0x1<<RMCEN), (0x0<<RMCEN));
+ 	}
+ 
+@@ -800,10 +858,72 @@ static void sunxi_codec_init(struct snd_codec *codec)
+ 	sunxi_alg_cfg_domain_set(&domain_1bdrc, SUNXI_ALG_CFG_DOMAIN_1BDRC);
+ }
+ 
+-static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int onoff)
++static void sunxi_codec_playback_diag(struct snd_codec *codec,
++					const char *phase)
++{
++	struct sunxi_codec_info *sunxi_codec = codec->private_data;
++	struct sunxi_codec_param *param = &sunxi_codec->param;
++	gpio_direction_t direction = GPIO_DIRECTION_INPUT;
++	gpio_data_t data = GPIO_DATA_LOW;
++	int direction_ret;
++	int data_ret;
++
++	direction_ret = hal_gpio_get_direction(param->gpio_spk, &direction);
++	data_ret = hal_gpio_get_data(param->gpio_spk, &data);
++
++	syslog(LOG_INFO,
++		"codec playback diag phase=%s chip=%d route=%u "
++		"amp_gpio=%d dir=%d data=%d gpio_ret=%d/%d\n",
++		phase, sunxi_codec->chip_ver, param->pb_audio_route,
++		param->gpio_spk, direction, data, direction_ret, data_ret);
++	syslog(LOG_INFO,
++		"codec playback diag dac_dpc=%08x dac_vol=%08x "
++		"dac_fifoc=%08x dac_fifos=%08x dac_cnt=%u\n",
++		snd_codec_read(codec, SUNXI_DAC_DPC),
++		snd_codec_read(codec, SUNXI_DAC_VOL_CTL),
++		snd_codec_read(codec, SUNXI_DAC_FIFOC),
++		snd_codec_read(codec, SUNXI_DAC_FIFOS),
++		snd_codec_read(codec, SUNXI_DAC_CNT));
++	syslog(LOG_INFO,
++		"codec playback diag dac_ana=%08x ramp=%08x hp=%08x "
++		"power=%08x\n",
++		snd_codec_read(codec, SUNXI_DAC_ANA_CTL),
++		snd_codec_read(codec, SUNXI_RAMP_ANA_CTL),
++		snd_codec_read(codec, SUNXI_HP_ANA_CTL),
++		snd_codec_read(codec, SUNXI_POWER_ANA_CTL));
++}
++
++static void sunxi_codec_set_spk(struct snd_codec *codec, int enable)
+ {
+ 	struct sunxi_codec_info *sunxi_codec = codec->private_data;
+ 	struct sunxi_codec_param *param = &sunxi_codec->param;
++	gpio_direction_t direction = GPIO_DIRECTION_INPUT;
++	gpio_data_t data = GPIO_DATA_LOW;
++	gpio_data_t target = enable ? param->pa_level : !param->pa_level;
++	int direction_ret;
++	int data_ret;
++	int direction_get_ret;
++	int data_get_ret;
++
++	direction_ret = hal_gpio_set_direction(param->gpio_spk,
++						 GPIO_MUXSEL_OUT);
++	data_ret = hal_gpio_set_data(param->gpio_spk, target);
++	direction_get_ret = hal_gpio_get_direction(param->gpio_spk, &direction);
++	data_get_ret = hal_gpio_get_data(param->gpio_spk, &data);
++
++	syslog(LOG_INFO,
++		"codec amp enable=%d gpio=%d target=%d dir=%d data=%d "
++		"ret=%d/%d/%d/%d\n",
++		enable, param->gpio_spk, target, direction, data,
++		direction_ret, data_ret, direction_get_ret, data_get_ret);
++
++	if (enable)
++		hal_msleep(param->pa_msleep_time);
++}
++
++static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int onoff)
++{
++	struct sunxi_codec_info *sunxi_codec = codec->private_data;
+ 
+ 	if (onoff) {
+ 		if (sunxi_codec->chip_ver == CHIP_VER_A) {
+@@ -818,10 +938,12 @@ static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int
+ 			snd_codec_update_bits(codec, SUNXI_DAC_DPC,
+ 					(0x1<<EN_DAC), (0x1<<EN_DAC));
+ 			hal_msleep(5);
+-			/* analog DAC enable */
++			/* analog DAC enable and unmute */
+ 			snd_codec_update_bits(codec, SUNXI_DAC_ANA_CTL,
+-					(0x1<<DACLEN) | (0x1<<DACREN),
+-					(0x1<<DACLEN) | (0x1<<DACREN));
++					(0x1<<DACLEN) | (0x1<<DACREN) |
++					(0x1<<DACLMUTE) | (0x1<<DACRMUTE),
++					(0x1<<DACLEN) | (0x1<<DACREN) |
++					(0x1<<DACLMUTE) | (0x1<<DACRMUTE));
+ 			/* HEADPONEOUT */
+ 			snd_codec_update_bits(codec, SUNXI_HP_ANA_CTL,
+ 				(0x1<<HP_DRVEN) | (0x1<<HP_DRVOUTEN),
+@@ -833,19 +955,20 @@ static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int
+ 			/* digital DAC enable */
+ 			snd_codec_update_bits(codec, SUNXI_DAC_DPC,
+ 					(0x1<<EN_DAC), (0x1<<EN_DAC));
+-			snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
++			sunxi_codec_ramp_ack(codec, RAMP_W1C_MASK);
++			sunxi_codec_ramp_update_bits(codec,
++					(0x1<<RMCEN), (0x0<<RMCEN));
++			sunxi_codec_ramp_update_bits(codec,
+ 					(0x1<<RDEN), (0x1<<RDEN));
++			sunxi_codec_ramp_wait_and_ack(codec,
++						      0x1<<RAMP_RISE_INT);
+ 		}
+-		if (spk) {
+-			hal_gpio_set_direction(param->gpio_spk, GPIO_MUXSEL_OUT);
+-			hal_gpio_set_data(param->gpio_spk, param->pa_level);
+-			hal_msleep(param->pa_msleep_time);
+-		}
++		if (spk)
++			sunxi_codec_set_spk(codec, 1);
++		sunxi_codec_playback_diag(codec, "hp-on");
+ 	} else {
+-		if (spk) {
+-			hal_gpio_set_direction(param->gpio_spk, GPIO_MUXSEL_OUT);
+-			hal_gpio_set_data(param->gpio_spk, !param->pa_level);
+-		}
++		if (spk)
++			sunxi_codec_set_spk(codec, 0);
+ 		/* Playback off */
+ 		if (sunxi_codec->chip_ver == CHIP_VER_A) {
+ 			/* HEADPONE_EN */
+@@ -875,6 +998,18 @@ static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int
+ 					(0x1<<HPFB_BUF_EN) | (0x1<<HPFB_IN_EN),
+ 					(0x0<<HPFB_BUF_EN) | (0x0<<HPFB_IN_EN));
+ 		} else {
++			uint32_t reg_val;
++
++			reg_val = snd_codec_read(codec, SUNXI_DAC_REG);
++			if ((reg_val & (0x1 << LINEOUTL_EN)) ||
++			    (reg_val & (0x1 << LINEOUTR_EN)))
++				sunxi_codec_ramp_update_bits(codec,
++						(0x1<<RMCEN), (0x1<<RMCEN));
++			sunxi_codec_ramp_ack(codec, RAMP_W1C_MASK);
++			sunxi_codec_ramp_update_bits(codec,
++					(0x1<<RDEN), (0x0<<RDEN));
++			sunxi_codec_ramp_wait_and_ack(codec,
++						      0x1<<RAMP_FALL_INT);
+ 			/* analog DAC */
+ 			snd_codec_update_bits(codec, SUNXI_DAC_ANA_CTL,
+ 					(0x1<<DACLEN) | (0x1<<DACREN),
+@@ -882,9 +1017,8 @@ static void sunxi_codec_playback_hp_route(struct snd_codec *codec, int spk, int
+ 			/* digital DAC enable */
+ 			snd_codec_update_bits(codec, SUNXI_DAC_DPC,
+ 					(0x1<<EN_DAC), (0x0<<EN_DAC));
+-			snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
+-					(0x1<<RDEN), (0x0<<RDEN));
+ 		}
++		sunxi_codec_playback_diag(codec, "hp-off");
+ 	}
+ }
+ 
+@@ -908,9 +1042,9 @@ static void sunxi_codec_playback_lineout_route(struct snd_codec *codec, int spk,
+ 		if (sunxi_codec->chip_ver != CHIP_VER_A) {
+ 			uint32_t reg_val;
+ 			reg_val = snd_codec_read(codec, SUNXI_RAMP_ANA_CTL);
+-			if(!(reg_val & (0x1 << RDEN)))
+-				snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
+-						0x1<<RDEN, 0x1<<RDEN);
++			if (!(reg_val & (0x1 << RDEN)))
++				sunxi_codec_ramp_update_bits(codec,
++						0x1<<RMCEN, 0x1<<RMCEN);
+ 		}
+ 		snd_codec_update_bits(codec, SUNXI_DAC_REG,
+ 				(0x1<<LINEOUTL_EN) | (0x1<<LINEOUTR_EN),
+@@ -941,9 +1075,9 @@ static void sunxi_codec_playback_lineout_route(struct snd_codec *codec, int spk,
+ 		if (sunxi_codec->chip_ver != CHIP_VER_A) {
+ 			uint32_t reg_val;
+ 			reg_val = snd_codec_read(codec, SUNXI_RAMP_ANA_CTL);
+-			if(!(reg_val & (0x1 << RDEN)))
+-				snd_codec_update_bits(codec, SUNXI_RAMP_ANA_CTL,
+-						0x1<<RDEN, 0x0<<RDEN);
++			if (!(reg_val & (0x1 << RDEN)))
++				sunxi_codec_ramp_update_bits(codec,
++						0x1<<RMCEN, 0x0<<RMCEN);
+ 		}
+ 	}
+ 
+@@ -982,8 +1116,13 @@ static int sunxi_codec_dapm_control(struct snd_pcm_substream *substream,
+ 			sunxi_codec_playback_hp_route(codec, 0, onoff);
+ 			break;
+ 		case PB_AUDIO_ROUTE_LO_HP_SPK:
+-			sunxi_codec_playback_lineout_route(codec, onoff ? 0 : 1, onoff);
+-			sunxi_codec_playback_hp_route(codec, onoff ? 1 : 0, onoff);
++			if (onoff) {
++				sunxi_codec_playback_lineout_route(codec, 0, 1);
++				sunxi_codec_playback_hp_route(codec, 1, 1);
++			} else {
++				sunxi_codec_playback_hp_route(codec, 1, 0);
++				sunxi_codec_playback_lineout_route(codec, 0, 0);
++			}
+ 			break;
+ 		}
+ 	} else {
+@@ -1352,6 +1491,7 @@ static int sunxi_codec_trigger(struct snd_pcm_substream *substream,
+ 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+ 			snd_codec_update_bits(codec, SUNXI_DAC_FIFOC,
+ 				(1 << DAC_DRQ_EN), (1 << DAC_DRQ_EN));
++			sunxi_codec_playback_diag(codec, "trigger-start");
+ 		}
+ 		else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+ 			snd_codec_update_bits(codec, SUNXI_ADC_FIFOC,
+@@ -1365,6 +1505,7 @@ static int sunxi_codec_trigger(struct snd_pcm_substream *substream,
+ 	case SNDRV_PCM_TRIGGER_SUSPEND:
+ 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+ 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++			sunxi_codec_playback_diag(codec, "trigger-stop");
+ 			snd_codec_update_bits(codec, SUNXI_DAC_FIFOC,
+ 				(1 << DAC_DRQ_EN), (0 << DAC_DRQ_EN));
+ 		}
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.h b/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.h
+index cf0e482e..f865041b 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.h
++++ b/chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.h
+@@ -355,6 +355,12 @@
+ #define MMICBIAS_CHOP_CLK_SEL	2
+ 
+ /* SUNXI_RAMP_ANA_CTL: SUNXI_PR_CFG + 0x1c */
++#define RAMP_RISE_INT_EN	31
++#define RAMP_RISE_INT		30
++#define RAMP_FALL_INT_EN	29
++#define RAMP_FALL_INT		28
++#define RAMP_W1C_MASK		((0x1U << RAMP_RISE_INT) | \
++				 (0x1U << RAMP_FALL_INT))
+ #define RMCEN			1
+ #define RDEN			0
+ 

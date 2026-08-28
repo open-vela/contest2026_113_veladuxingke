@@ -1,148 +1,189 @@
-# contest2026_113_veladuxingke
+# Vela 智能桌面管家
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
+## 一、作品简介
 
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `113`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
+Vela 智能桌面管家是一套基于 openvela 和百问网 R528S3-DshanPi 的离线智能桌面终端。它通过 SHT40、BH1750 和 SGP30 采集温度、湿度、光照、eCO₂ 与 TVOC，在 480×320 触摸屏上实时展示，并提供离线固定指令识别、中文语音播报、高低温告警、今日日程提醒、智能照明和局域网管理。
 
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+主要特点：
 
----
+- 点击屏幕“开始语音”后，可识别“现在温度多少”、“现在湿度多少”、“现在光照多少”和“现在空气质量怎么样”，并播报实时传感器数据。
+- 采用全 INT8 TFLite Micro 语音指令分类模型，识别和推理均在 R528 本地完成，不依赖云端语音服务。当前模型是面向已采集说话人的固定指令原型，不是通用中文 ASR，且本版未启用唤醒词。
+- 温度越界时自动播报高温或低温提醒；阈值可在浏览器中修改。
+- 可在浏览器中编辑 3 条今日日程，到时在屏幕弹窗并播报当前时分秒和目标到期提醒。
+- 连接 Wi-Fi 后自动通过 NTP 校时；断网后依靠系统时钟继续走时。
+- 屏幕可扫描并配置 Wi-Fi，连接成功后显示设备 IP、网页地址和 4 位访问令牌，脱离串口也可独立使用。
+- 网页可查看实时值、日期时间表格、运行曲线和每个采样点，支持 5 秒至 1 小时记录间隔，并可将历史数据导出到 FAT32 microSD 卡。
+- `wifi_manager`、`lan_panel` 和 `routine_mgr` 均在开机时自动启动。
 
-## 一、先读这些官方文档
+## 二、选题方向
 
-**通用（所有赛道必读）：**
+**AI 硬件产品创新。**
 
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
+作品将 R528 端侧 AI 语音推理与环境传感器、触摸显示、音频播报、Wi-Fi、NTP、局域网网页和 SD 卡数据管理整合为一台可独立运行的硬件产品，解决桌面环境查询、异常提醒和日程管理需要多个设备的问题。
 
-**按你的赛道选读（三选一）：**
+## 三、目录结构
 
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
+- `app/routine_manager/` — LVGL 桌面应用，包含环境采集、日程与告警模型、语音录制/识别/播报、历史记录和触摸 UI。
+- `app/wifi_manager/` — Wi-Fi 配置、自动连接、DHCP、断线重试、状态发布与 NTP 校时服务。
+- `app/lan_panel/` — 设备端低资源 HTTP 服务和内置网页，用于环境数据、曲线、历史、日程、温度阈值、智能照明和 SD 导出管理。
+- `app/st7796_test/` — ST7796U2 屏幕色块、方向和帧缓冲调试程序。
+- `board/r528s3-dshanpi/` — R528S3-DshanPi 板级配置、ST7796U2/FT5x06 初始化、启动脚本、中文字体和语音 PCM 资源。
+- `patches/` — 对 NuttX、NxPlayer 和 Allwinner R528 音频、DMIC、TWI3 及 GPIO 的可复现补丁。
+- `source_assets/routine_voice/` — 中文语音 WAV 母版及生成元数据；API Key 不在仓库中。
+- `tools/` — 补丁应用、语音资源处理、KWS 语料导入/训练/模型转换与主机端合同测试工具。
+- `docs/` — 硬件接线、编译、触摸、显示、传感器、音频、语音和网络的开发与验收记录；另有 [`快速上手与自定义语音模型`](docs/快速上手与自定义语音模型.md) 供首次使用者和自定义说话人模型使用。
+- `logs/` — 按日期归档的完整 AI Coding 对话日志及清单。
+- `contest2026_113_veladuxingke.xml` — 参赛仓库 manifest 和应用映射配置。
 
----
+## 四、运行方式
 
-## 二、第一步：拉取完整工程
+### 1. 硬件准备
 
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
+- 百问网 R528S3-DshanPi（256 MiB NAND 版）、3.5 寸 ST7796U2 触摸屏和可用的板载 DMIC/音频输出。
+- SHT40（`0x44`）、GY-302/BH1750（默认 `0x23`）、SGP30（`0x58`）各 1 个，并联到 J3 的 TWI3：PE6/SCL=第 11 脚，PE7/SDA=第 10 脚，3.3 V=第 1 或 17 脚，GND=第 9、14 或 20 脚。
+- 可选 FAT32 microSD 卡，用于导出历史数据。
+- Ubuntu 20.04 或更高版本的编译主机。如未搭建 openvela 环境，先按 [`board/r528s3-dshanpi/README_zh-cn.md`](board/r528s3-dshanpi/README_zh-cn.md) 安装依赖和 `repo`。
+
+### 2. 拉取工程
 
 ```bash
+mkdir openvela-workspace
+cd openvela-workspace
+
 repo init -u https://github.com/open-vela/contest2026_113_veladuxingke \
   -b dev-ai-contest-2026 -m contest2026_113_veladuxingke.xml
 repo sync -c -j8
 ```
 
-同步后，你的整个仓库位于工作区的 `contest2026_113_veladuxingke/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
+同步后，本仓位于 `contest2026_113_veladuxingke/`，其余 openvela 子仓位于当前工作区根目录。
 
----
-
-## 三、第二步：在哪里写代码
-
-**只在自己的仓目录 `contest2026_113_veladuxingke/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_113_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_113_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_113_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_113_veladuxingke.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
-```
-
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
-
----
-
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
+如果这是从旧模板升级的已有工作区，先清理旧模板留下的软链接和生成文件，再开始编译：
 
 ```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
-
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
+cd /path/to/openvela
+if [ -L packages/demos/contest2026_113_hello_app ]; then
+  unlink packages/demos/contest2026_113_hello_app
+fi
+if [ -L packages/demos/contest2026_113_hello_world ]; then
+  unlink packages/demos/contest2026_113_hello_world
+fi
+rm -f packages/demos/Kconfig packages/demos/.kconfig
 ```
 
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
+这两个 `hello_*` 链接属于旧模板，不能手动改成普通目录；`Kconfig` 和
+`.kconfig` 会在下一次应用预配置时按当前四个应用重新生成。
 
----
+### 3. 应用必需补丁
 
-## 五、第四步：提交作品
+在 openvela 工作区根目录执行：
 
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
+```bash
+./contest2026_113_veladuxingke/tools/apply_vendor_patches.sh
+```
 
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
+该脚本可重复执行：已应用的补丁会被检测并跳过，补丁不匹配时会停止并报错。
 
-### 关于 PR 与 CLA
+### 4. 编译 NuttX
 
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
+仍在 openvela 工作区根目录执行：
 
----
+```bash
+source build/envsetup.sh
+./build.sh contest2026_113_veladuxingke/board/r528s3-dshanpi/configs/nsh/ -j8
+```
 
-## 六、提交前：把本 README 改成你的作品说明
+切换过板级配置或需要全量重建时，先执行：
 
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
+```bash
+./build.sh contest2026_113_veladuxingke/board/r528s3-dshanpi/configs/nsh/ -j8 distclean
+```
 
-```markdown
-# <你的作品名>
+然后重新执行上述编译命令。
 
-## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
+### 5. 生成 NAND 烧录镜像
 
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
+```bash
+# 必须在 openvela 工作区根目录先加载通用环境；它会加入
+# prebuilts/build-tools/linux-x86_64/bin，供 lichee 的打包脚本使用。
+cd /path/to/openvela
+source build/envsetup.sh
 
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
+cd vendor/allwinnertech/lichee
+source envsetup.sh
+lunch_nuttx r528s3-dshanpi
+pack
+```
 
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
+不要在 `source envsetup.sh` 后再输入 `bash`。`lunch_nuttx` 和 `pack` 是当前
+shell 中定义的函数，进入子 shell 会丢失它们。若 lichee 环境提示找不到
+`prebuilts/kconfig-frontends`，不要继续执行 `lunch_nuttx`；回到工作区根目录，
+按上面的顺序重新加载 `build/envsetup.sh`。
+
+生成文件：
+
+```text
+vendor/allwinnertech/lichee/out/r528s3/dshanpi_nand/rtos_nuttx_r528s3-dshanpi_uart0_256Mnand.img
+```
+
+当前打包脚本可能因 DshanPi 专用 `data/res` 缺失并回退到公共资源而返回 1。只有日志中同时出现以下两行，且上述镜像的修改时间为本次打包时间，才视为生成成功：
+
+```text
+Dragon execute image.cfg SUCCESS !
+pack finish
+```
+
+### 6. 烧录
+
+1. 在 Windows 上打开 PhoenixSuit，选择上述 `.img` 镜像。
+2. 开发板断电，按住 FEL 键后通过 USB 连接并上电，进入烧录模式。
+3. 在 PhoenixSuit 中开始升级，等待烧录完成后断电重启。
+
+串口不是正常使用的必需条件。需要调试时按板级配置连接调试串口，参数为
+`1500000 8N1`（配置文件中的 UART3 控制台；具体插座以板卡丝印为准）。
+
+### 7. 首次使用与验收
+
+第一次拿到板子或需要为自己的声音训练模型时，先阅读
+[`快速上手与自定义语音模型`](docs/快速上手与自定义语音模型.md)。
+
+1. 开机后等待桌面界面出现；无需在 NSH 中手动启动程序。
+2. 确认 SHT40、BH1750 和 SGP30 状态转为“实时”。SGP30 上电后需要短暂预热，预热期间空气质量语音查询会提示数据暂不可用。
+3. 点击顶部 Wi-Fi 图标，扫描网络、选择 SSID、输入密码并点击“连接”。界面保留在当前页，联网成功后弹窗显示 IP、`http://<IP>:8080/` 和 4 位令牌，时间会自动同步。
+4. 在同一局域网的电脑或手机打开弹窗中的网址，输入 4 位令牌。可修改高低温阈值和日程、调整记录间隔、加载历史、查看每个曲线点或导出数据。
+5. 点击屏幕“开始语音”，在录音时间窗内清晰说出下列任一指令：
+
+   ```text
+   现在温度多少
+   现在湿度多少
+   现在光照多少
+   现在空气质量怎么样
+   ```
+
+   每次查询前都需要再点击一次“开始语音”，本版本不启用唤醒词。
+
+6. 要验证历史导出，插入 FAT32 microSD 卡，在网页“运行曲线”弹窗中选择“导出到 SD 卡”。文件保存到：
+
+   ```text
+   /sdcard/routine_history/routine-history-<epoch>.jsonl
+   ```
+
+如烧录新版本后浏览器仍显示旧页面，请清理该设备地址的缓存，或用无痕窗口重新打开。
+
+### 8. 提交前验证范围
+
+- 主机端合同测试：177 项通过，6 项按环境条件跳过。测试依赖位于仓库外的
+  `/tmp/r528-kws-site`，不会被打包进提交内容。
+- `contest2026_113_veladuxingke.xml` 可解析，manifest 中列出的日志路径均已核对存在，JSONL 日志和 manifest 均可解析。
+- 本轮提交整理未重新执行完整 NuttX 编译、NAND 打包或烧录；`docs/` 和 `logs/` 中的构建、烧录及真机结果是开发期间的历史记录，不等同于本轮重新验收。
 
 ## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
-```
 
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
+本作品在需求拆解、架构设计、编码、日志分析、测试和文档整理中持续使用 AI Coding：
 
----
+- **需求与架构：** AI 将“传感器 + 语音 + 触摸屏 + 日程 + 网页”拆分为环境服务、数据模型、LVGL UI、音频状态机、Wi-Fi/NTP 服务和 HTTP 面板，帮助明确模块边界、错误状态与并发约束。
+- **编码实现：** AI 协助完成 R528 TWI3 传感器访问、ST7796U2/FT5x06 适配、本地 KWS 特征与 TFLite Micro 集成、语音片段组合、安全配置写入、局域网 API 和可视化页面。
+- **调试定位：** 通过串口日志与源码对照，AI 协助定位过触摸坐标方向、DMIC 引脚、音频工作线程生命周期、Codec RAMP W1C 时序、语音只能识别一次、Wi-Fi 字体图标和浏览器偶发 `NetworkError` 等跨层问题。
+- **质量保证：** AI 根据缺陷补充边界检查、原子文件更新、HTTP 超时/重试/并发处理和主机端合同测试；开发期间的构建、打包与真机结果按日期归档，便于复核。
+- **文档与可追溯性：** AI 将接线、构建、真机现象、修复过程和已知边界持续归档到 `docs/`，便于审查和复现。
 
-## 附：仓库命名规范
-
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_113_veladuxingke`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+AI 显著减少了跨驱动、音频、LVGL、网络和模型工具链问题的往返定位时间，并通过可重复测试和边界检查提高了实现质量。AI 输出的修改均经过源码审查和相应的主机或硬件验证；本轮提交前的实际验证范围以“提交前验证范围”一节为准，不以 AI 推断代替硬件验收。完整对话日志见 [`logs/`](logs/)。

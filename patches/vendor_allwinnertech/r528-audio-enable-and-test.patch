@@ -1,0 +1,229 @@
+diff --git a/Make.defs b/Make.defs
+index 6493185f..9f895961 100644
+--- a/Make.defs
++++ b/Make.defs
+@@ -13,8 +13,9 @@ CUR_FOLDER := $(notdir $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST)))))
+ AW_VENDOR_DIR := $(APPDIR)/vendor/allwinnertech
+ AW_CHIP_DIR   := $(AW_VENDOR_DIR)/chips/r528
+ 
+-# Only include if this vendor matches the board config
+-ifeq ($(findstring $(CUR_FOLDER),$(CONFIG_ARCH_BOARD_CUSTOM_DIR)), $(CUR_FOLDER))
++# Include for Allwinner custom boards and for the R528 contest board, whose
++# board directory lives in the contest repository rather than under vendor.
++ifneq ($(filter $(CUR_FOLDER),$(CONFIG_ARCH_BOARD_CUSTOM_DIR))$(CONFIG_ARCH_CHIP_R528),)
+ 
+ # HAL test applications (optional)
+ include $(wildcard $(AW_CHIP_DIR)/drivers/rtos-hal/hal/test/Make.defs)
+@@ -25,4 +26,4 @@ include $(wildcard $(AW_CHIP_DIR)/components/Make.defs)
+ # Vendor applications
+ include $(AW_VENDOR_DIR)/apps/Make.defs
+ 
+-endif # CUR_FOLDER check
++endif # Allwinner board check
+diff --git a/apps/audio_test/audio_helper.c b/apps/audio_test/audio_helper.c
+index b9b3e62c..8b504e14 100644
+--- a/apps/audio_test/audio_helper.c
++++ b/apps/audio_test/audio_helper.c
+@@ -40,8 +40,10 @@
+  * Pre-processor Definitions
+  ****************************************************************************/
+ 
+-#define RECORD_FILE     "/tmp/audio_test.pcm"
+-#define LOOPBACK_FIFO   "/var/pipe/loopback"
++#define RECORD_FILE              "/tmp/audio_test.pcm"
++#define LOOPBACK_FIFO            "/var/pipe/loopback"
++#define DEFAULT_CAPTURE_DEVICE   "/dev/audio/pcm1c"
++#define DEFAULT_PLAYBACK_DEVICE  "/dev/audio/pcm0p"
+ 
+ /****************************************************************************
+  * Private Types
+@@ -57,6 +59,8 @@ struct audio_context_s
+   uint8_t bps;
+   uint32_t sample_rate;
+   uint8_t chmap;
++  const char *capture_device;
++  const char *playback_device;
+ 
+   /* Devices */
+   FAR struct nxrecorder_s *recorder;
+@@ -158,7 +162,9 @@ static void *player_init_thread(void *arg)
+  ****************************************************************************/
+ 
+ int audio_init(enum audio_mode_e mode, uint8_t channels, uint8_t bps,
+-               uint32_t sample_rate, uint8_t chmap)
++               uint32_t sample_rate, uint8_t chmap,
++               FAR const char *capture_device,
++               FAR const char *playback_device)
+ {
+   struct stat st;
+   int ret;
+@@ -178,6 +184,10 @@ int audio_init(enum audio_mode_e mode, uint8_t channels, uint8_t bps,
+   g_audio_ctx.bps = bps;
+   g_audio_ctx.sample_rate = sample_rate;
+   g_audio_ctx.chmap = chmap;
++  g_audio_ctx.capture_device = capture_device != NULL ?
++                               capture_device : DEFAULT_CAPTURE_DEVICE;
++  g_audio_ctx.playback_device = playback_device != NULL ?
++                                playback_device : DEFAULT_PLAYBACK_DEVICE;
+ 
+   /* Create recorder */
+   g_audio_ctx.recorder = nxrecorder_create();
+@@ -223,7 +233,7 @@ int audio_init(enum audio_mode_e mode, uint8_t channels, uint8_t bps,
+           return -ENOMEM;
+         }
+ 
+-      nxplayer_setdevice(g_audio_ctx.player, "/dev/audio/pcm0p");
++      nxplayer_setdevice(g_audio_ctx.player, g_audio_ctx.playback_device);
+ 
+       /* Start player in background thread (will block on FIFO open) */
+       struct player_init_args_s *args = malloc(sizeof(*args));
+@@ -288,7 +298,7 @@ int audio_start(void)
+       printf("[audio] Starting recorder (will unblock player thread)...\n");
+       fflush(stdout);
+ 
+-      nxrecorder_setdevice(g_audio_ctx.recorder, "/dev/audio/pcm0c");
++      nxrecorder_setdevice(g_audio_ctx.recorder, g_audio_ctx.capture_device);
+       ret = nxrecorder_recordinternal(g_audio_ctx.recorder, filename,
+                                       AUDIO_FMT_PCM,
+                                       g_audio_ctx.channels,
+@@ -333,7 +343,7 @@ int audio_start(void)
+       filename = RECORD_FILE;
+       printf("[audio] Starting recorder -> file with callback\n");
+ 
+-      nxrecorder_setdevice(g_audio_ctx.recorder, "/dev/audio/pcm0c");
++      nxrecorder_setdevice(g_audio_ctx.recorder, g_audio_ctx.capture_device);
+       ret = nxrecorder_recordinternal(g_audio_ctx.recorder, filename,
+                                       AUDIO_FMT_PCM,
+                                       g_audio_ctx.channels,
+@@ -393,7 +403,7 @@ int audio_playback(void)
+       return -ENOMEM;
+     }
+ 
+-  nxplayer_setdevice(player, "/dev/audio/pcm0p");
++  nxplayer_setdevice(player, g_audio_ctx.playback_device);
+   ret = nxplayer_playraw(player, RECORD_FILE,
+                         AUDIO_FMT_PCM,
+                         0,
+diff --git a/apps/audio_test/audio_helper.h b/apps/audio_test/audio_helper.h
+index 59e1ea10..e409af7d 100644
+--- a/apps/audio_test/audio_helper.h
++++ b/apps/audio_test/audio_helper.h
+@@ -20,7 +20,9 @@ enum audio_mode_e
+ 
+ /* Initialize audio system with specified mode and parameters */
+ int audio_init(enum audio_mode_e mode, uint8_t channels, uint8_t bps,
+-               uint32_t sample_rate, uint8_t chmap);
++               uint32_t sample_rate, uint8_t chmap,
++               FAR const char *capture_device,
++               FAR const char *playback_device);
+ 
+ /* Start audio operation (recording + playing for loopback, or recording for record mode) */
+ int audio_start(void);
+diff --git a/apps/audio_test/main.c b/apps/audio_test/main.c
+index 4a96e151..efcd3ad9 100644
+--- a/apps/audio_test/main.c
++++ b/apps/audio_test/main.c
+@@ -22,8 +22,10 @@
+ #define DEFAULT_DURATION    5
+ #define DEFAULT_SAMPLE_RATE 16000
+ #define DEFAULT_BPS         16
+-#define DEFAULT_CHANNELS    1
+-#define DEFAULT_CHMAP       1
++#define DEFAULT_CHANNELS         1
++#define DEFAULT_CHMAP            1
++#define DEFAULT_CAPTURE_DEVICE   "/dev/audio/pcm1c"
++#define DEFAULT_PLAYBACK_DEVICE  "/dev/audio/pcm0p"
+ 
+ /****************************************************************************
+  * Private Data
+@@ -68,16 +70,19 @@ static void print_usage(void)
+ {
+   printf("\nVoice Detection Test Utility\n");
+   printf("Usage:\n");
+-  printf("  audio_test record <seconds> [rate bps ch chmap]\n");
++  printf("  audio_test record <seconds> [rate bps ch chmap [capture playback]]\n");
+   printf("             Record audio then play it back\n\n");
+-  printf("  audio_test loopback <seconds> [rate bps ch chmap]\n");
++  printf("  audio_test loopback <seconds> [rate bps ch chmap [capture playback]]\n");
+   printf("          Real-time audio loopback (mic to speaker)\n\n");
+   printf("Arguments:\n");
+   printf("  seconds  - Duration in seconds (default: %d)\n", DEFAULT_DURATION);
+   printf("  rate     - Sample rate in Hz (default: %d)\n", DEFAULT_SAMPLE_RATE);
+   printf("  bps      - Bits per sample (default: %d)\n", DEFAULT_BPS);
+   printf("  ch       - Number of channels (default: %d)\n", DEFAULT_CHANNELS);
+-  printf("  chmap    - Channel map (default: %d)\n\n", DEFAULT_CHMAP);
++  printf("  chmap    - Channel map (default: %d)\n", DEFAULT_CHMAP);
++  printf("  capture  - Capture device (default: %s)\n", DEFAULT_CAPTURE_DEVICE);
++  printf("  playback - Playback device (default: %s)\n\n",
++         DEFAULT_PLAYBACK_DEVICE);
+   printf("Examples:\n");
+   printf("  audio_test record 5\n");
+   printf("  audio_test loopback 10 16000 16 1 1\n\n");
+@@ -90,6 +95,8 @@ static int cmd_record(int argc, FAR char *argv[])
+   uint8_t bps;
+   uint8_t channels;
+   uint8_t chmap;
++  FAR const char *capture_device;
++  FAR const char *playback_device;
+   int ret;
+   unsigned int elapsed;
+ 
+@@ -99,6 +106,8 @@ static int cmd_record(int argc, FAR char *argv[])
+   bps      = parse_uint_arg(argc > 4 ? argv[4] : NULL, DEFAULT_BPS, 8, 32);
+   channels = parse_uint_arg(argc > 5 ? argv[5] : NULL, DEFAULT_CHANNELS, 1, 2);
+   chmap    = parse_uint_arg(argc > 6 ? argv[6] : NULL, DEFAULT_CHMAP, 0, 255);
++  capture_device = argc > 7 ? argv[7] : DEFAULT_CAPTURE_DEVICE;
++  playback_device = argc > 8 ? argv[8] : DEFAULT_PLAYBACK_DEVICE;
+ 
+   printf("[audio] Record mode: %us, %luHz, %ubit, %uch\n",
+          seconds, (unsigned long)rate, bps, channels);
+@@ -109,7 +118,8 @@ static int cmd_record(int argc, FAR char *argv[])
+   signal(SIGTERM, signal_handler);
+ 
+   /* Initialize */
+-  ret = audio_init(AUDIO_MODE_RECORD, channels, bps, rate, chmap);
++  ret = audio_init(AUDIO_MODE_RECORD, channels, bps, rate, chmap,
++                   capture_device, playback_device);
+   if (ret < 0)
+     {
+       printf("[audio] ERROR: Init failed: %d\n", ret);
+@@ -195,6 +205,8 @@ static int cmd_loopback(int argc, FAR char *argv[])
+   uint8_t bps;
+   uint8_t channels;
+   uint8_t chmap;
++  FAR const char *capture_device;
++  FAR const char *playback_device;
+   int ret;
+   unsigned int elapsed;
+ 
+@@ -204,6 +216,8 @@ static int cmd_loopback(int argc, FAR char *argv[])
+   bps      = parse_uint_arg(argc > 4 ? argv[4] : NULL, DEFAULT_BPS, 8, 32);
+   channels = parse_uint_arg(argc > 5 ? argv[5] : NULL, DEFAULT_CHANNELS, 1, 2);
+   chmap    = parse_uint_arg(argc > 6 ? argv[6] : NULL, DEFAULT_CHMAP, 0, 255);
++  capture_device = argc > 7 ? argv[7] : DEFAULT_CAPTURE_DEVICE;
++  playback_device = argc > 8 ? argv[8] : DEFAULT_PLAYBACK_DEVICE;
+ 
+   printf("[audio] Loopback mode: %us, %luHz, %ubit, %uch\n",
+          seconds, (unsigned long)rate, bps, channels);
+@@ -214,7 +228,8 @@ static int cmd_loopback(int argc, FAR char *argv[])
+   signal(SIGTERM, signal_handler);
+ 
+   /* Initialize */
+-  ret = audio_init(AUDIO_MODE_LOOPBACK, channels, bps, rate, chmap);
++  ret = audio_init(AUDIO_MODE_LOOPBACK, channels, bps, rate, chmap,
++                   capture_device, playback_device);
+   if (ret < 0)
+     {
+       printf("[audio] ERROR: Init failed: %d\n", ret);
+diff --git a/chips/r528/components/audio/Make.defs b/chips/r528/components/audio/Make.defs
+index fa5a1e0e..2e3b7c1a 100644
+--- a/chips/r528/components/audio/Make.defs
++++ b/chips/r528/components/audio/Make.defs
+@@ -18,6 +18,7 @@ CFLAGS += ${INCDIR_PREFIX}$(ARCH_ALSA_UTILS_SRC_PATH)
+ CFLAGS += ${INCDIR_PREFIX}$(ARCH_AUDIO_RPMSG_PATH)
+ ifneq ($(CONFIG_AW_AUDIO_DMIC)$(CONFIG_AW_AUDIO_CODEC),)
+ CHIP_CSRCS += $(AW_AUDIO_DRV_PATH)/sunxi_alsa.c
++CHIP_CSRCS += $(AW_ALSA_UTILS_PATH)/common.c
+ endif
+ 
+ ifeq ($(CONFIG_AW_AUDIO_AUDIO_I2S),y)

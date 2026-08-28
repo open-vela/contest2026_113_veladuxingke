@@ -1,0 +1,693 @@
+diff --git a/chips/r528/Kconfig b/chips/r528/Kconfig
+index ec944309..6fa85d1c 100755
+--- a/chips/r528/Kconfig
++++ b/chips/r528/Kconfig
+@@ -130,6 +130,11 @@ config R528_TWI2
+ 	depends on DRIVERS_TWI
+ 	default n
+ 
++config R528_TWI3
++	bool "TWI 3"
++	depends on DRIVERS_TWI
++	default n
++
+ config R528_SPI0
+ 	bool "SPI 0"
+ 	default n
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/twi/hal_twi.c b/chips/r528/drivers/rtos-hal/hal/source/twi/hal_twi.c
+index 6c79cede..8f9a2a44 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/twi/hal_twi.c
++++ b/chips/r528/drivers/rtos-hal/hal/source/twi/hal_twi.c
+@@ -1327,35 +1327,52 @@ static int hal_twi_engine_complete(hal_twi_t *twi, int code)
+     int ret = SUNXI_TWI_OK;
+     int hal_sem_ret;
+ 
+-    twi->msgs     = NULL;
+     twi->msgs_num = 0;
+     twi->msgs_ptr = 0;
+-    twi->status  = TWI_XFER_IDLE;
++    twi->status = TWI_XFER_IDLE;
++    twi->result = TWI_STATUS_OK;
+ 
+-    /* twi->msgs_idx  store the information */
+-    if (code == SUNXI_TWI_FAIL)
++    switch (code)
+     {
+-        TWI_ERR("[twi%d] Maybe Logic Error, debug it!", twi->port);
+-        twi->msgs_idx = code;
+-        ret = SUNXI_TWI_FAIL;
+-        twi->result = RESULT_ERR;
++        case SUNXI_TWI_OK:
++            break;
++
++        case TWI_STAT_TX_AW_NAK:
++        case TWI_STAT_TX_AR_NAK:
++            twi->result = TWI_STATUS_ERROR_ADDRESS_NACK;
++            break;
++
++        case TWI_STAT_TXD_NAK:
++            twi->result = TWI_STATUS_ERROR_DATA_NACK;
++            break;
++
++        case TWI_STAT_ARBLOST:
++            twi->result = TWI_STATUS_ERROR_ARBITRATION;
++            break;
++
++        case 0xff:
++            twi->result = TWI_STATUS_ERROR_BUS;
++            break;
++
++        default:
++            twi->result = TWI_STATUS_ERROR;
++            break;
+     }
+-    else if (code != SUNXI_TWI_OK)
++
++    if (twi->result != TWI_STATUS_OK)
+     {
+-        twi->msgs_idx = code;
+         ret = SUNXI_TWI_FAIL;
+-        twi->result = RESULT_ERR;
+     }
+ 
+     hal_sem_ret = hal_sem_post(twi->hal_sem);
+     if (hal_sem_ret != 0)
+     {
+         ret = SUNXI_TWI_FAIL;
+-        TWI_ERR(" evdev give hal_semaphore err");
++        twi->result = TWI_STATUS_ERROR;
++        TWI_ERR("evdev give hal_semaphore err");
+     }
+ 
+-    TWI_INFO("code=%d, complete", twi->msgs_idx);
+-
++    TWI_INFO("code=%d, result=%d", code, twi->result);
+     return ret;
+ }
+ 
+@@ -1821,6 +1838,7 @@ static int hal_twi_engine_do_xfer(hal_twi_t *twi, twi_msg_t *msgs, int num)
+     int hal_sem_ret;
+ 	unsigned long flags;
+ 
++    twi->result = TWI_STATUS_OK;
+     twi_soft_reset(base_addr, TWI_SRST_REG, TWI_SRST_SRST);
+     //udelay(100);
+ 
+@@ -1833,6 +1851,7 @@ static int hal_twi_engine_do_xfer(hal_twi_t *twi, twi_msg_t *msgs, int num)
+                 twi->port, twi_query_irq_status(base_addr));
+         if (twi_send_clk_9pulse(base_addr, twi->port) != SUNXI_TWI_OK)
+         {
++            twi->result = TWI_STATUS_ERROR_BUSY;
+             ret = SUNXI_TWI_RETRY;
+             goto out;
+         }
+@@ -1862,6 +1881,7 @@ static int hal_twi_engine_do_xfer(hal_twi_t *twi, twi_msg_t *msgs, int num)
+             TWI_ERR("[twi%d] twi start fail", twi->port);
+             twi_soft_reset(base_addr, TWI_SRST_REG, TWI_SRST_SRST);
+             twi_disable_irq(base_addr);  /* disable irq */
++            twi->result = TWI_STATUS_ERROR_BUS;
+             ret = SUNXI_TWI_RETRY;
+             goto out;
+         }
+@@ -1884,6 +1904,13 @@ static int hal_twi_engine_do_xfer(hal_twi_t *twi, twi_msg_t *msgs, int num)
+         //twin_lock_irqsave(&twi->lock, flags);
+         /* twi->msgs = NULL; */
+         //twin_unlock_irqrestore(&twi->lock, flags);
++        twi->result = TWI_STATUS_ERROR_TIMEOUT;
++        twi_soft_reset(base_addr, TWI_SRST_REG, TWI_SRST_SRST);
++        twi->status = TWI_XFER_IDLE;
++        ret = SUNXI_TWI_FAIL;
++    }
++    else if (twi->result != TWI_STATUS_OK)
++    {
+         ret = SUNXI_TWI_FAIL;
+     }
+     else if (ret != num - 1)
+@@ -1903,51 +1930,103 @@ out:
+     return ret;
+ }
+ 
+-twi_status_t hal_twi_xfer(twi_port_t port, twi_msg_t *msgs, int32_t num)
++static twi_status_t hal_twi_set_frequency(hal_twi_t *twi,
++                                          uint32_t frequency)
+ {
+-    hal_twi_t *twi = &hal_twi[port];
+-    int ret;
++    if (frequency != TWI_FREQUENCY_100K &&
++        frequency != TWI_FREQUENCY_200K &&
++        frequency != TWI_FREQUENCY_400K)
++    {
++        return TWI_STATUS_INVALID_PARAMETER;
++    }
+ 
+-    hal_mutex_lock(twi->lock);
++    if (twi->freq == frequency)
++    {
++        return TWI_STATUS_OK;
++    }
+ 
+-    if ((msgs == NULL) || (num <= 0))
++    twi->freq = frequency;
++    if (twi->twi_drv_used)
++    {
++        twi_set_clock(twi, TWI_DRIVER_BUSC, OSC24M, twi->freq,
++                      TWI_DRV_CLK_M, TWI_DRV_CLK_N);
++    }
++    else
++    {
++        twi_set_clock(twi, TWI_CLK_REG, twi->source_clock_hz, twi->freq,
++                      TWI_CLK_DIV_M, TWI_CLK_DIV_N);
++    }
++
++    return TWI_STATUS_OK;
++}
++
++static twi_status_t hal_twi_xfer_locked(twi_port_t port, twi_msg_t *msgs,
++                                        int32_t num, uint32_t frequency)
++{
++    hal_twi_t *twi;
++    twi_status_t status;
++    int ret;
++
++    if (port < TWI_MASTER_0 || port >= TWI_MASTER_MAX ||
++        msgs == NULL || num <= 0)
+     {
+-        TWI_ERR("[twi%d] invalid argument", port);
+-        hal_mutex_unlock(twi->lock);
+         return TWI_STATUS_INVALID_PARAMETER;
+     }
+ 
++    twi = &hal_twi[port];
++    if (!twi->already_init || twi->lock == NULL)
++    {
++        return TWI_STATUS_INVALID_PORT_NUMBER;
++    }
++
++    hal_mutex_lock(twi->lock);
++    if (frequency != 0)
++    {
++        status = hal_twi_set_frequency(twi, frequency);
++        if (status != TWI_STATUS_OK)
++        {
++            hal_mutex_unlock(twi->lock);
++            return status;
++        }
++    }
++
+ #ifdef CONFIG_COMPONENTS_PM
+     pm_wakelocks_acquire(&twi->wl, PM_WL_TYPE_WAIT_INC, OS_WAIT_FOREVER);
+ #endif
+ 
++    twi->result = TWI_STATUS_OK;
+     if (twi->twi_drv_used)
+     {
+-        TWI_INFO("[twi%d] twi driver xfer", twi->port);
+         ret = hal_twi_drv_do_xfer(twi, msgs, num);
+-        if (ret < 0)
+-        {
+-            ret = TWI_STATUS_ERROR;
+-            goto end;
+-        }
+     }
+     else
+     {
+-        TWI_INFO("[twi%d] twi engine xfer", twi->port);
+         ret = hal_twi_engine_do_xfer(twi, msgs, num);
+-        if (ret < 0)
+-        {
+-            ret = TWI_STATUS_ERROR;
+-            goto end;
+-        }
+     }
+ 
+-end:
+ #ifdef CONFIG_COMPONENTS_PM
+     pm_wakelocks_release(&twi->wl);
+ #endif
++
++    status = twi->result;
++    if (ret != num - 1 && status == TWI_STATUS_OK)
++    {
++        status = TWI_STATUS_ERROR;
++    }
++
+     hal_mutex_unlock(twi->lock);
+-    return ret == num - 1 ? TWI_STATUS_OK : TWI_STATUS_ERROR;
++    return status;
++}
++
++twi_status_t hal_twi_xfer(twi_port_t port, twi_msg_t *msgs, int32_t num)
++{
++    return hal_twi_xfer_locked(port, msgs, num, 0);
++}
++
++twi_status_t hal_twi_xfer_frequency(twi_port_t port, twi_msg_t *msgs,
++                                    int32_t num, uint32_t frequency)
++{
++    return hal_twi_xfer_locked(port, msgs, num, frequency);
+ }
+ 
+ static twi_status_t hal_twi_sys_pinctrl_init(hal_twi_t *twi)
+@@ -2263,6 +2342,8 @@ static twi_status_t hal_twi_clk_init(hal_twi_t *twi)
+         rate = OSC24M; /* FIXME: fixed to 24MHz */
+     }
+ 
++    twi->source_clock_hz = rate;
++
+     if (hal_clock_enable(twi->clk))
+     {
+         TWI_ERR("twi clock enable error\n");
+@@ -2342,8 +2423,14 @@ struct pm_devops pm_twi_ops = {
+ 
+ twi_status_t hal_twi_init(twi_port_t port)
+ {
+-    hal_twi_t *twi = &hal_twi[port];
++    hal_twi_t *twi;
+ 
++    if (port < TWI_MASTER_0 || port >= TWI_MASTER_MAX)
++    {
++        return TWI_STATUS_INVALID_PORT_NUMBER;
++    }
++
++    twi = &hal_twi[port];
+     if (twi->already_init) //if twi has been inited, return ok
+     {
+         gpio_muxsel_t func;
+@@ -2374,6 +2461,7 @@ twi_status_t hal_twi_init(twi_port_t port)
+     twi->twi_drv_used = TWI_DRV_XFER;
+ #endif
+     twi->status = TWI_XFER_IDLE;
++    twi->result = TWI_STATUS_OK;
+     twi->timeout = 5;
+     twi->flags = 0;
+ 
+@@ -2479,7 +2567,14 @@ err0:
+ 
+ twi_status_t hal_twi_uninit(twi_port_t port)
+ {
+-    hal_twi_t *twi = &hal_twi[port];
++    hal_twi_t *twi;
++
++    if (port < TWI_MASTER_0 || port >= TWI_MASTER_MAX)
++    {
++        return TWI_STATUS_INVALID_PORT_NUMBER;
++    }
++
++    twi = &hal_twi[port];
+ 
+     if (twi->already_init > 0)
+     {
+@@ -2509,10 +2604,15 @@ twi_status_t hal_twi_uninit(twi_port_t port)
+ 
+ twi_status_t hal_twi_soft_reset(twi_port_t port)
+ {
+-    hal_twi_t *twi = &hal_twi[port];
+-    const uint32_t base_addr = twi->base_addr;
++    hal_twi_t *twi;
+ 
+-    twi_soft_reset(base_addr, TWI_SRST_REG, TWI_SRST_SRST);
++    if (port < TWI_MASTER_0 || port >= TWI_MASTER_MAX)
++    {
++        return TWI_STATUS_INVALID_PORT_NUMBER;
++    }
++
++    twi = &hal_twi[port];
++    twi_soft_reset(twi->base_addr, TWI_SRST_REG, TWI_SRST_SRST);
+ 	return TWI_STATUS_OK;
+ }
+ 
+diff --git a/chips/r528/drivers/rtos-hal/include/hal/sunxi_hal_twi.h b/chips/r528/drivers/rtos-hal/include/hal/sunxi_hal_twi.h
+index 49a53e2e..2b8e87bf 100755
+--- a/chips/r528/drivers/rtos-hal/include/hal/sunxi_hal_twi.h
++++ b/chips/r528/drivers/rtos-hal/include/hal/sunxi_hal_twi.h
+@@ -40,8 +40,12 @@ typedef enum
+ /** @brief This enum defines the HAL interface return value. */
+ typedef enum
+ {
++    TWI_STATUS_ERROR_BUS = -10,
++    TWI_STATUS_ERROR_ARBITRATION = -9,
++    TWI_STATUS_ERROR_DATA_NACK = -8,
++    TWI_STATUS_ERROR_ADDRESS_NACK = -7,
++    TWI_STATUS_ERROR_TIMEOUT = -6,
+     TWI_STATUS_ERROR = -4,                        /**<  An error occurred and the transaction has failed. */
+-    //TWI_STATUS_ERROR_TIMEOUT = -4,                /**<  The TWI bus xfer timeout, an error occurred. */
+     TWI_STATUS_ERROR_BUSY = -3,                   /**<  The TWI bus is busy, an error occurred. */
+     TWI_STATUS_INVALID_PORT_NUMBER = -2,          /**<  A wrong port number is given. */
+     TWI_STATUS_INVALID_PARAMETER = -1,            /**<  A wrong parameter is given. */
+@@ -94,7 +98,7 @@ typedef struct twi_msg
+ typedef struct sunxi_twi
+ {
+     uint8_t port;
+-    uint8_t result;
++    int result;
+     uint8_t already_init;
+     uint8_t twi_drv_used;
+     uint8_t pkt_interval;
+@@ -115,6 +119,7 @@ typedef struct sunxi_twi
+     hal_clk_t pclk;
+     hal_clk_t mclk;
+     hal_clk_t clk;
++    uint32_t source_clock_hz;
+     twi_frequency_t freq;
+ 
+     uint32_t    pinmux;
+@@ -155,6 +160,8 @@ twi_status_t hal_twi_read(twi_port_t port, unsigned long pos, void *buf, uint32_
+ //twi control
+ twi_status_t hal_twi_control(twi_port_t port, hal_twi_transfer_cmd_t cmd, void *args);
+ twi_status_t hal_twi_xfer(twi_port_t port, twi_msg_t *msgs, int32_t num);
++twi_status_t hal_twi_xfer_frequency(twi_port_t port, twi_msg_t *msgs,
++                                    int32_t num, uint32_t frequency);
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/chips/r528/drv/twi/drv_twi.c b/chips/r528/drv/twi/drv_twi.c
+index 79cd2701..c356e6bf 100755
+--- a/chips/r528/drv/twi/drv_twi.c
++++ b/chips/r528/drv/twi/drv_twi.c
+@@ -1,65 +1,32 @@
+-/* Copyright (c) 2019-2025 Allwinner Technology Co., Ltd. ALL rights reserved.
+-
+- * Allwinner is a trademark of Allwinner Technology Co.,Ltd., registered in
+- * the the People's Republic of China and other countries.
+- * All Allwinner Technology Co.,Ltd. trademarks are used with permission.
+-
+- * DISCLAIMER
+- * THIRD PARTY LICENCES MAY BE REQUIRED TO IMPLEMENT THE SOLUTION/PRODUCT.
+- * IF YOU NEED TO INTEGRATE THIRD PARTY’S TECHNOLOGY (SONY, DTS, DOLBY, AVS OR MPEGLA, ETC.)
+- * IN ALLWINNERS’SDK OR PRODUCTS, YOU SHALL BE SOLELY RESPONSIBLE TO OBTAIN
+- * ALL APPROPRIATELY REQUIRED THIRD PARTY LICENCES.
+- * ALLWINNER SHALL HAVE NO WARRANTY, INDEMNITY OR OTHER OBLIGATIONS WITH RESPECT TO MATTERS
+- * COVERED UNDER ANY REQUIRED THIRD PARTY LICENSE.
+- * YOU ARE SOLELY RESPONSIBLE FOR YOUR USAGE OF THIRD PARTY’S TECHNOLOGY.
+-
+-
+- * THIS SOFTWARE IS PROVIDED BY ALLWINNER"AS IS" AND TO THE MAXIMUM EXTENT
+- * PERMITTED BY LAW, ALLWINNER EXPRESSLY DISCLAIMS ALL WARRANTIES OF ANY KIND,
+- * WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING WITHOUT LIMITATION REGARDING
+- * THE TITLE, NON-INFRINGEMENT, ACCURACY, CONDITION, COMPLETENESS, PERFORMANCE
+- * OR MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+- * IN NO EVENT SHALL ALLWINNER BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+- * LOSS OF USE, DATA, OR PROFITS, OR BUSINESS INTERRUPTION)
+- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+- * OF THE POSSIBILITY OF SUCH DAMAGE.
+- */
++/****************************************************************************
++ * vendor/allwinnertech/chips/r528/drv/twi/drv_twi.c
++ ****************************************************************************/
+ 
+ #include <nuttx/config.h>
+-#include <nuttx/arch.h>
+ 
+-#include <stdint.h>
+-#include <errno.h>
+ #include <debug.h>
++#include <errno.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <string.h>
+ 
+-#include <nuttx/irq.h>
+-#include <nuttx/kmalloc.h>
+-#include <nuttx/clock.h>
+ #include <nuttx/i2c/i2c_master.h>
+-#include <arch/board/board.h>
+-
+-#include "chip.h"
+ 
+ #include "sunxi_hal_twi.h"
+-#include "hal_mem.h"
+ 
+-#if defined(CONFIG_DRIVERS_TWI)
++#ifdef CONFIG_DRIVERS_TWI
+ 
+-/****************************************************************************
+- * Private Function Prototypes
+- ****************************************************************************/
++#define R528_I2C_PORTS     4
++#define R528_I2C_MAX_MSGS  4
++#define R528_I2C_FLAGS     (I2C_M_READ | I2C_M_TEN | I2C_M_NOSTOP | \
++                            I2C_M_NOSTART)
+ 
+ struct sunxi_i2c_lowerhalf_s
+ {
+-	struct i2c_master_s i2c_s;
+-	int twi_port;
+-	void *arg;
++  struct i2c_master_s i2c_s;
++  int twi_port;
++  bool registered;
+ };
+-/* "Lower half" driver methods **********************************************/
+ 
+ static int r528_transfer(FAR struct i2c_master_s *lower,
+                          FAR struct i2c_msg_s *msgs, int count);
+@@ -67,9 +34,6 @@ static int r528_transfer(FAR struct i2c_master_s *lower,
+ static int r528_reset(FAR struct i2c_master_s *lower);
+ #endif
+ 
+-/****************************************************************************
+- * Private Data
+- ****************************************************************************/
+ static const struct i2c_ops_s g_i2cops =
+ {
+   .transfer = r528_transfer,
+@@ -78,78 +42,168 @@ static const struct i2c_ops_s g_i2cops =
+ #endif
+ };
+ 
+-/* "Lower half" driver state */
+-
+-static struct sunxi_i2c_lowerhalf_s g_i2cdev[4];
++static struct sunxi_i2c_lowerhalf_s g_i2cdev[R528_I2C_PORTS];
+ 
+-/****************************************************************************
+- * Private Functions
+- ****************************************************************************/
++static int r528_status_to_errno(twi_status_t status)
++{
++  switch (status)
++    {
++      case TWI_STATUS_OK:
++        return OK;
++      case TWI_STATUS_ERROR_ADDRESS_NACK:
++        return -ENXIO;
++      case TWI_STATUS_ERROR_DATA_NACK:
++      case TWI_STATUS_ERROR_BUS:
++      case TWI_STATUS_ERROR:
++        return -EIO;
++      case TWI_STATUS_ERROR_ARBITRATION:
++        return -EAGAIN;
++      case TWI_STATUS_ERROR_TIMEOUT:
++        return -ETIMEDOUT;
++      case TWI_STATUS_ERROR_BUSY:
++        return -EBUSY;
++      case TWI_STATUS_INVALID_PORT_NUMBER:
++      case TWI_STATUS_INVALID_PARAMETER:
++      default:
++        return -EINVAL;
++    }
++}
+ 
+ static int r528_transfer(FAR struct i2c_master_s *lower,
+-                         FAR  struct i2c_msg_s *msgs, int count)
++                         FAR struct i2c_msg_s *msgs, int count)
+ {
+-  FAR struct sunxi_i2c_lowerhalf_s *priv = (FAR struct sunxi_i2c_lowerhalf_s *)lower;
+-
+-  i2cinfo("Entry\n");
+-  DEBUGASSERT(priv);
+-
+-  struct twi_msg *twi_msgs = (struct twi_msg *)kmm_malloc(count * sizeof(struct twi_msg));
+-  if (twi_msgs == NULL) {
+-	syslog(LOG_ERR, "malloc twi mags fail\n");
+-	return -1;
+-  }
+-  memset(twi_msgs, 0, count * sizeof(struct twi_msg));
+-
+-  for (int i = 0; i < count; i++) {
+-    twi_msgs[i].addr = msgs[i].addr;
+-	twi_msgs[i].flags = msgs[i].flags;
+-	twi_msgs[i].len = msgs[i].length;
+-	twi_msgs[i].buf = msgs[i].buffer;
+-  }
+-
+-  hal_twi_init(priv->twi_port);
+-
+-  if (hal_twi_xfer(priv->twi_port, twi_msgs, count)) {
+-    kmm_free(twi_msgs);
+-    return -1;
+-  }
+-
+-  kmm_free(twi_msgs);
+-  return OK;
++  FAR struct sunxi_i2c_lowerhalf_s *priv;
++  struct twi_msg twi_msgs[R528_I2C_MAX_MSGS];
++  uint32_t frequency;
++  twi_status_t status;
++  int i;
++
++  if (lower == NULL || msgs == NULL || count <= 0)
++    {
++      return -EINVAL;
++    }
++
++  if (count > R528_I2C_MAX_MSGS)
++    {
++      return -E2BIG;
++    }
++
++  priv = (FAR struct sunxi_i2c_lowerhalf_s *)lower;
++  frequency = msgs[0].frequency == 0 ? TWI_FREQUENCY_400K :
++                                      msgs[0].frequency;
++  if (frequency != TWI_FREQUENCY_100K &&
++      frequency != TWI_FREQUENCY_200K &&
++      frequency != TWI_FREQUENCY_400K)
++    {
++      return -EINVAL;
++    }
++
++  memset(twi_msgs, 0, sizeof(twi_msgs));
++
++  for (i = 0; i < count; i++)
++    {
++      uint16_t flags = msgs[i].flags;
++
++      if (msgs[i].addr > 0x7f || msgs[i].length < 0 ||
++          msgs[i].length > UINT16_MAX ||
++          (msgs[i].length > 0 && msgs[i].buffer == NULL) ||
++          (flags & ~R528_I2C_FLAGS) != 0)
++        {
++          return -EINVAL;
++        }
++
++      if ((msgs[i].frequency == 0 ? TWI_FREQUENCY_400K :
++                                      msgs[i].frequency) != frequency)
++        {
++          return -EINVAL;
++        }
++
++      twi_msgs[i].addr = msgs[i].addr;
++      twi_msgs[i].len = msgs[i].length;
++      twi_msgs[i].buf = msgs[i].buffer;
++      twi_msgs[i].flags = 0;
++
++      if ((flags & I2C_M_READ) != 0)
++        {
++          twi_msgs[i].flags |= TWI_M_RD;
++        }
++
++      if ((flags & I2C_M_TEN) != 0)
++        {
++          twi_msgs[i].flags |= TWI_M_TEN;
++        }
++
++      if ((flags & I2C_M_NOSTOP) != 0)
++        {
++          twi_msgs[i].flags |= TWI_M_NOSTOP;
++        }
++
++      if ((flags & I2C_M_NOSTART) != 0)
++        {
++          twi_msgs[i].flags |= TWI_M_NOSTART;
++        }
++    }
++
++  status = hal_twi_xfer_frequency(priv->twi_port, twi_msgs, count,
++                                  frequency);
++  return r528_status_to_errno(status);
+ }
+ 
+ #ifdef CONFIG_I2C_RESET
+ static int r528_reset(FAR struct i2c_master_s *lower)
+ {
+-  FAR struct sunxi_i2c_lowerhalf_s *priv = (FAR struct sunxi_i2c_lowerhalf_s *)lower;
++  FAR struct sunxi_i2c_lowerhalf_s *priv;
+ 
+-  hal_twi_soft_reset(priv->twi_port);
+-  return OK;
++  if (lower == NULL)
++    {
++      return -EINVAL;
++    }
++
++  priv = (FAR struct sunxi_i2c_lowerhalf_s *)lower;
++  return r528_status_to_errno(hal_twi_soft_reset(priv->twi_port));
+ }
+ #endif
+ 
+-FAR struct i2c_master_s *r528_i2c_initialize(FAR const char *devpath, int i2c_id)
++FAR struct i2c_master_s *r528_i2c_initialize(FAR const char *devpath,
++                                             int i2c_id)
+ {
+-  FAR struct sunxi_i2c_lowerhalf_s *priv = &g_i2cdev[i2c_id];
+-  FAR int handle;
++  FAR struct sunxi_i2c_lowerhalf_s *priv;
++  int ret;
+ 
+-  i2cinfo("Entry: devpath=%s\n", devpath);
++  if (i2c_id < 0 || i2c_id >= R528_I2C_PORTS)
++    {
++      i2cerr("ERROR: invalid i2c port %d\n", i2c_id);
++      return NULL;
++    }
+ 
++  priv = &g_i2cdev[i2c_id];
++  if (priv->registered)
++    {
++      return &priv->i2c_s;
++    }
++
++  i2cinfo("Entry: devpath=%s\n", devpath);
+   priv->twi_port = i2c_id;
+   priv->i2c_s.ops = &g_i2cops;
+ 
+-  hal_twi_init(priv->twi_port);
+-
+-  handle = i2c_register((FAR struct i2c_master_s *)priv, i2c_id);
++  ret = hal_twi_init(priv->twi_port);
++  if (ret != TWI_STATUS_OK)
++    {
++      i2cerr("ERROR: i2c%d HAL initialization failed: %d\n", i2c_id, ret);
++      return NULL;
++    }
+ 
+-  if (!handle) {
+-      i2cinfo("i2c%d init success!\n", i2c_id);
+-      return (FAR struct i2c_master_s *)priv;
+-  } else {
+-      i2cinfo("i2c%d register faile\n", i2c_id);
++  ret = i2c_register(&priv->i2c_s, i2c_id);
++  if (ret < 0)
++    {
++      i2cerr("ERROR: i2c%d registration failed: %d\n", i2c_id, ret);
++      hal_twi_uninit(priv->twi_port);
+       return NULL;
+-  }
++    }
++
++  priv->registered = true;
++  i2cinfo("i2c%d initialized as %s\n", i2c_id, devpath);
++  return &priv->i2c_s;
+ }
+ 
+-#endif
++#endif /* CONFIG_DRIVERS_TWI */
+diff --git a/chips/r528/r528_boot.c b/chips/r528/r528_boot.c
+index f03b0596..0639c086 100755
+--- a/chips/r528/r528_boot.c
++++ b/chips/r528/r528_boot.c
+@@ -799,6 +799,10 @@ void r528_late_initialize(void)
+   unused_data struct i2c_master_s *i2c_bus2;
+   i2c_bus2 = r528_i2c_initialize("/dev/i2c2", 2);
+ #endif
++#ifdef CONFIG_R528_TWI3
++  unused_data struct i2c_master_s *i2c_bus3;
++  i2c_bus3 = r528_i2c_initialize("/dev/i2c3", 3);
++#endif
+ 
+ #ifdef CONFIG_GT911_IIC_TOUCH
+   extern int gt911_register(FAR const char *devpath,

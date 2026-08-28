@@ -1,0 +1,861 @@
+{
+  "schema_version": 1,
+  "endpoint": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+  "account_type": "token-plan",
+  "model": "mimo-v2.5-tts",
+  "voice": "冰糖",
+  "audio_format": "wav",
+  "style": "请使用清晰、自然、中性的普通话桌面助手播报风格。近距离收音，语速适中，音量、距离和情绪保持固定，动态范围较小，适合将多个独立短片段拼接。只朗读下一条 assistant 消息中的原文，不增删、改写或重复任何字词，不要加入音乐、音效、问候或解释；首尾仅保留很短的自然静音。",
+  "prompts": {
+    "wake_ack": {
+      "text": "我在",
+      "request_sha256": "15c3b71375fb282fb78347b2302d8975508c731835e14ed90dc34f31aad62bdd",
+      "wav_sha256": "aaac7d94e8555f886036dc50e782f1cad41ca6aae2b9974c9c310be839efd1c8",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 20104,
+        "rms": 2985,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "temperature_low_warning": {
+      "text": "温度过低注意保暖",
+      "request_sha256": "7e015e5054b9313392e605a05b85c2d540624568baff2cdff7848608657267e3",
+      "wav_sha256": "b1d354fa52d80cab6ad549c4183250d999ebe55c463411f66705fd64ff9e05ee",
+      "wav_bytes": 130604,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 65280,
+        "duration_ms": 2720.0,
+        "peak": 30969,
+        "rms": 3374,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "temperature_high_warning": {
+      "text": "温度过高注意高温",
+      "request_sha256": "01a7adcbd49c631b59e03fad49a605e9d772959f6f17039a0e02aa9c0edd4648",
+      "wav_sha256": "ffcfbd7627538d9d406ea3f2e6089b8c61e1edfe5cc5a048d788c97017938e64",
+      "wav_bytes": 115244,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 57600,
+        "duration_ms": 2400.0,
+        "peak": 19820,
+        "rms": 3482,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "current_time_is": {
+      "text": "当前时间为",
+      "request_sha256": "aeda3b3a23c45e8f997bf306bcd56beabc5ef448141d002c174303d7a9dce430",
+      "wav_sha256": "9120b658c964da30a08621386ba2104f80ef1e3b793fd1ca255d2daae01f5747",
+      "wav_bytes": 99884,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 49920,
+        "duration_ms": 2080.0,
+        "peak": 14128,
+        "rms": 2438,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "second_unit": {
+      "text": "秒",
+      "request_sha256": "c53ff6c01af6cb82cc036df03db7ba91b59c1f0933a8b324858e542bad394e83",
+      "wav_sha256": "38ad4066c52d25ae9ee86f3cbaabc0eb601cdae4cfd857152e697c1604319a8e",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 16106,
+        "rms": 1953,
+        "full_scale_samples": 0
+      },
+      "response_id": "993c9bcdbd40445ba8125f886ec49eda",
+      "audio_id": "aab5654c462e4005b3d9b58f5e682502",
+      "finish_reason": "stop",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "today_goal_due": {
+      "text": "你今日目标时间已到",
+      "request_sha256": "3bbad7eb83163460b4b0f1868cb9969686b590b5e4acfe9653e4a3d8f8272b9b",
+      "wav_sha256": "10a856c2fc8ed503238f54078b9fdbd493ab166088ee968d41830e9968dc0a24",
+      "wav_bytes": 138284,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 69120,
+        "duration_ms": 2880.0,
+        "peak": 17680,
+        "rms": 3351,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "current_temperature_is": {
+      "text": "当前温度是",
+      "request_sha256": "a5c7f81f3e1f2734a1cdb725b4bc4f4aeea383456952eada37c61e7a1334d39d",
+      "wav_sha256": "573397b4e6560c6beab9ccce9d69e0c6b6a5b0bb40646fff0fa71f305fad1524",
+      "wav_bytes": 92204,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 46080,
+        "duration_ms": 1920.0,
+        "peak": 22941,
+        "rms": 3495,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "below_zero": {
+      "text": "零下",
+      "request_sha256": "c43b2654e92e2e33e7bca795f3773cbd2e6b40de527d3213f206a0f9e2f156e0",
+      "wav_sha256": "f4dde8dc72f786af6980ebd3ca75fc81de7018270935313d063a808ce92a8f16",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 24861,
+        "rms": 3615,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "zero": {
+      "text": "零",
+      "request_sha256": "9498b6eca6b536f375020bc567e7a66cf0820e553008e102a4853ca16de67388",
+      "wav_sha256": "c188247976551036696751fb84ae8ce999eae9e424c5c3e94a399d66e12a567e",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 28808,
+        "rms": 4520,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "one": {
+      "text": "一",
+      "request_sha256": "dfd097c060be16b10b1c21ac0c2f1658f13c2e45526c61fcc50ff6d6e28793b8",
+      "wav_sha256": "c72691ba4836a937eb77fcbb9ba647cc755c166162d74d09f040339b1d755c00",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 11176,
+        "rms": 1923,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "two": {
+      "text": "二",
+      "request_sha256": "a8ee09136862f0442ec597fe031ebccca2f5d023b7cccfac639c8c3207259489",
+      "wav_sha256": "21a744802fce4f5c0cac0f76fc5608e3193115dd2280d75747043ed1036d1ae7",
+      "wav_bytes": 53804,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 26880,
+        "duration_ms": 1120.0,
+        "peak": 19633,
+        "rms": 3180,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "three": {
+      "text": "三",
+      "request_sha256": "8fa3deaf82bf750ff496b65e596b02546eb5f6ea7206867252bad37a299afe07",
+      "wav_sha256": "4dad682770d580fbbd9f3acace66e44c9bb621af35a2a2afdaf4e2c22e085e2a",
+      "wav_bytes": 46994,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23475,
+        "duration_ms": 978.125,
+        "peak": 22195,
+        "rms": 2997,
+        "full_scale_samples": 0
+      },
+      "response_id": "9b239eeafdca4c0fa387a9ea45794ad8",
+      "audio_id": "3a8bfcf4effc463691dbc6e20aae2fe9",
+      "finish_reason": "selected-context-extraction",
+      "response_model": "mimo-v2.5-tts",
+      "selection": {
+        "source_context": "digit_pause_three_pause_end.wav",
+        "source_text": "数字，三，结束",
+        "source_wav_sha256": "55d50aa6f559e1c82058e59dba77b5f4406434577b23e792570535074e072dc3",
+        "method": "middle word; 20 ms RMS segmentation and quiet zero-crossing boundaries in both pauses",
+        "start_frame": 24920,
+        "end_frame": 48395,
+        "start_ms": 1038.333,
+        "end_ms": 2016.458
+      }
+    },
+    "four": {
+      "text": "四",
+      "request_sha256": "045d57e61f34f5c120d9dffbafb8c759000d8e3bf32e9fac6daf1f7182387522",
+      "wav_sha256": "cc251b1e98622d09f8749f2755b03555aaed19988652eaa19adc5efdcc1c9700",
+      "wav_bytes": 53804,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 26880,
+        "duration_ms": 1120.0,
+        "peak": 24233,
+        "rms": 3491,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "five": {
+      "text": "五",
+      "request_sha256": "8b906c19ca19875aa9831c806d57f4a24bdc4fd35fdc6ec059c3c75698ccc266",
+      "wav_sha256": "d6422a0f945c7783c49c038e6b99e6c6747adc879532ee91ca93e2cd738a9556",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 4876,
+        "rms": 872,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "six": {
+      "text": "六",
+      "request_sha256": "a03a51871ef864dbe325af3cd208af78205659c8410127ec1bb259514e4c9ae9",
+      "wav_sha256": "0fd700aa485938d9c9d0345a14dbb89e4d1ce30737fd9d675392f9dece9f0fd9",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 21338,
+        "rms": 3508,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "seven": {
+      "text": "七",
+      "request_sha256": "69f0c3a38e5a84071d8f067bb79012e26adc6448c72b4f1491d6b81bcc48d119",
+      "wav_sha256": "e47d0ab6c1d6460869ada82305ba7449f20f1ff3657223aec14ee01b1189f047",
+      "wav_bytes": 41572,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 20764,
+        "duration_ms": 865.167,
+        "peak": 10820,
+        "rms": 2202,
+        "full_scale_samples": 0
+      },
+      "response_id": "270a668e17854869be3b0bca1c2a660d",
+      "audio_id": "9ab25a881fcd49d1ab62c604d52ab45a",
+      "finish_reason": "selected-context-extraction",
+      "response_model": "mimo-v2.5-tts",
+      "selection": {
+        "source_context": "three_pause_seven_pause_nine.wav",
+        "source_text": "三，七，九",
+        "source_wav_sha256": "263d876b6e45958390604fe35bfe9f471b174020c3e0fb47d8bb464da22dcd29",
+        "method": "middle word; 20 ms RMS segmentation and quiet zero-crossing boundaries in both pauses",
+        "start_frame": 22705,
+        "end_frame": 43469,
+        "start_ms": 946.042,
+        "end_ms": 1811.208
+      }
+    },
+    "eight": {
+      "text": "八",
+      "request_sha256": "adfcebc387fddf8ceb9613c0a49d2dab745b5a4faa5d256b59a7f63757ea5e2b",
+      "wav_sha256": "c679cf55631a4528db51a2b6742d373bc324bc17e1a6838e616f3ae1afeae80c",
+      "wav_bytes": 38444,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 19200,
+        "duration_ms": 800.0,
+        "peak": 24810,
+        "rms": 3271,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "nine": {
+      "text": "九",
+      "request_sha256": "4f036338f2c62f99a14333a17c46595416f0833ab343a4b81cd71ba8993ca122",
+      "wav_sha256": "e12c983a77e015ab40c9d2dc6a7ecb6c0f7cdf1222720a613ed90c5f6bfdc5db",
+      "wav_bytes": 38444,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 19200,
+        "duration_ms": 800.0,
+        "peak": 12348,
+        "rms": 2145,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "ten": {
+      "text": "十",
+      "request_sha256": "04e47c89ac951b43de86121f25085c61d65be41272a47ec1f636316d9bc0323d",
+      "wav_sha256": "c3376cec31ecf216101878a97036ca8c8e0c562abc0e9f6c1f446c526b049326",
+      "wav_bytes": 38444,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 19200,
+        "duration_ms": 800.0,
+        "peak": 14223,
+        "rms": 3055,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "hundred": {
+      "text": "百",
+      "request_sha256": "bde02f0ef01f9c8c55b6aa01f4a5c358662e473d8b1ab83c589ce91b28c40b07",
+      "wav_sha256": "de4a69122bc4b242fa25f60c922f0a5f19cfa112bfa65c688b5c6a7b2d63a6e4",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 16361,
+        "rms": 2055,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "thousand": {
+      "text": "千",
+      "request_sha256": "9681bf6c02dc435eb594ddf229d4ca6d35e55e29a62f0f28ff3edf0f8330a334",
+      "wav_sha256": "b99cae88eb5a95fb9e928b4df05e2191741fd546e02c49b3172d72e6ac94c34d",
+      "wav_bytes": 37716,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 18836,
+        "duration_ms": 784.833,
+        "peak": 20674,
+        "rms": 3195,
+        "full_scale_samples": 0
+      },
+      "response_id": "ff2c76ecc0784fd58324b452c048546a",
+      "audio_id": "429f613c89ff4641881efdb803b8a1af",
+      "finish_reason": "selected-context-extraction",
+      "response_model": "mimo-v2.5-tts",
+      "selection": {
+        "source_context": "one_pause_thousand_pause_two.wav",
+        "source_text": "一，千，二",
+        "source_wav_sha256": "6d92d8783dc693a820c25147e46e101a46ceb89179bb122ba076165d2026a36a",
+        "method": "middle word; 20 ms RMS segmentation and quiet zero-crossing boundaries in both pauses",
+        "start_frame": 14236,
+        "end_frame": 33072,
+        "start_ms": 593.167,
+        "end_ms": 1378.0
+      }
+    },
+    "ten_thousand": {
+      "text": "万",
+      "request_sha256": "ca53461840dab5a7c7c61470bb2e2b4aa47a3e61ec34851019b861dd1938c12e",
+      "wav_sha256": "f37d3cadba89aa1fcfb43233d8c9dad71092c8daead320649b0d61633fda8b05",
+      "wav_bytes": 61876,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30916,
+        "duration_ms": 1288.167,
+        "peak": 29150,
+        "rms": 2948,
+        "full_scale_samples": 0
+      },
+      "response_id": "31cafd05155c4efcabe779f143543e7a",
+      "audio_id": "412aa132343b42739275a0e584ac1761",
+      "finish_reason": "selected-context-extraction",
+      "response_model": "mimo-v2.5-tts",
+      "selection": {
+        "source_context": "one_pause_ten_thousand_pause_two.wav",
+        "source_text": "一，万，二",
+        "source_wav_sha256": "6e2ae1c81adef9ab7e5c7e0f74f9e647b00d360a2a6fe655084001205bef46f7",
+        "method": "middle word; 20 ms RMS segmentation and quiet zero-crossing boundaries in both pauses",
+        "start_frame": 23584,
+        "end_frame": 54500,
+        "start_ms": 982.667,
+        "end_ms": 2270.833
+      }
+    },
+    "point": {
+      "text": "点",
+      "request_sha256": "4144161887065cf739b6b1c34fc987e4e419759b660e4317b06f4da938aa46d5",
+      "wav_sha256": "93fe1da3de5150191d02986db871bd080fd4a4f3b2a18e6ed5a20ff93445f2a2",
+      "wav_bytes": 30432,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 15194,
+        "duration_ms": 633.083,
+        "peak": 19768,
+        "rms": 2944,
+        "full_scale_samples": 0
+      },
+      "response_id": "f359b92189aa4c96b76ce13e5808001f",
+      "audio_id": "239561711f4341369dee8a2d2447d323",
+      "finish_reason": "selected-context-extraction",
+      "response_model": "mimo-v2.5-tts",
+      "selection": {
+        "source_context": "four_pause_point_pause_two.wav",
+        "source_text": "四，点，二",
+        "source_wav_sha256": "012de3a82178190bbceeec81f8c0695d4372036212947894e8ae935f5478e60d",
+        "method": "middle word; 20 ms RMS segmentation and quiet zero-crossing boundaries in both pauses",
+        "start_frame": 27973,
+        "end_frame": 43167,
+        "start_ms": 1165.542,
+        "end_ms": 1798.625
+      }
+    },
+    "degree_celsius": {
+      "text": "摄氏度",
+      "request_sha256": "aab1ff1ecdc109240f488ba5330ca3fe0eaa20b973f41cf86f3adc8db0c99789",
+      "wav_sha256": "a237d0c8a23706d94106da6bc59cd4f3f81d8d8afa2ca1fdadbeea11772f5763",
+      "wav_bytes": 69164,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 34560,
+        "duration_ms": 1440.0,
+        "peak": 17734,
+        "rms": 3028,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "current_humidity_is": {
+      "text": "当前湿度是",
+      "request_sha256": "d68f9eaf1b64d30645ec6bc59d7bfa464873250427d4d4d5d9aacb1ce6cb4728",
+      "wav_sha256": "b3b1b1a20a0a56f6a0797d555bedb9509b2f9ef5d33d7b49f4bd7a1959d90549",
+      "wav_bytes": 99884,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 49920,
+        "duration_ms": 2080.0,
+        "peak": 21008,
+        "rms": 3728,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "percentage": {
+      "text": "百分比",
+      "request_sha256": "e0564c6107432b84e6d41ac50dc3eb7ab08d78514c25355831a2e1ac35a9d9da",
+      "wav_sha256": "b9f3a87c57832e013976f844f0670d0c873155c40ed0d7b40454fd9c85f73159",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 14619,
+        "rms": 1796,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "current_light_is": {
+      "text": "当前光照是",
+      "request_sha256": "a528737f1e3ef6ea6e5b569c4a1833efcb4c4c5bee26c761b050e832c12ad5fb",
+      "wav_sha256": "3db94fb7c738aaeb1bb850a7f3e46406ca606c78a05a71c391e29d84bc57c82a",
+      "wav_bytes": 76844,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 38400,
+        "duration_ms": 1600.0,
+        "peak": 26141,
+        "rms": 3963,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "lux": {
+      "text": "勒克斯",
+      "request_sha256": "0cbf8c266ac19c529346ba28ebb7a92662214bb3251d6c4c4d9d69c7e10442a8",
+      "wav_sha256": "b675c78a3dbd86e7ced006771162991b23bf9c4eec1db287d67e493e7f53c360",
+      "wav_bytes": 69164,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 34560,
+        "duration_ms": 1440.0,
+        "peak": 29731,
+        "rms": 3409,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "carbon_dioxide_concentration_is": {
+      "text": "二氧化碳浓度是",
+      "request_sha256": "0cdbf97e8c4d24957b542a5399e2991b26e5f5287847573735f850998aa30ec1",
+      "wav_sha256": "a8a85664e0c01cb618956c848333220c4670c28557105d0913d05ffb903ce9eb",
+      "wav_bytes": 115244,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 57600,
+        "duration_ms": 2400.0,
+        "peak": 15361,
+        "rms": 2526,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "ppm": {
+      "text": "PPM",
+      "request_sha256": "9cf65239f3f4a60e505c0f085ee9d6a60825bb9d5a9e40b8c42c99d3d8f8bc85",
+      "wav_sha256": "80b9b1d59cb317e34f490e1b3002763fdbb885716de03ba7868e7eb76c5cd2b7",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 24107,
+        "rms": 2726,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "volatile_organic_compound_concentration_is": {
+      "text": "挥发性有机物浓度是",
+      "request_sha256": "1efaf27b3c20be7b83f5d41b39908164e083633e3a5d611c06c364bfce544885",
+      "wav_sha256": "d47cbfa430e21e61f2124b622fb758c5b70c2eafbb0aa01d1646e54b2c6f51be",
+      "wav_bytes": 130604,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 65280,
+        "duration_ms": 2720.0,
+        "peak": 18170,
+        "rms": 3057,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "ppb": {
+      "text": "PPB",
+      "request_sha256": "c7cebd9e542a140f0e2ccd53c00a79fd7e8188f5f3e76b46bfd64c39db307e03",
+      "wav_sha256": "9599e22b1c42201650f085f9d2a033e07f80c47335f36da47bc06f2307d54a37",
+      "wav_bytes": 69164,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 34560,
+        "duration_ms": 1440.0,
+        "peak": 13352,
+        "rms": 2875,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "schedule_reminder": {
+      "text": "事项提醒",
+      "request_sha256": "cc6d283f86f6009c6150c06701cf65efcbd2e6b0c0e6bedb79ab1301ed1321b4",
+      "wav_sha256": "ae64b0f44c1fb031841c22bc86d2a7eaee539df1dd170f4edc91d8d5b47faf07",
+      "wav_bytes": 76844,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 38400,
+        "duration_ms": 1600.0,
+        "peak": 25954,
+        "rms": 3280,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "schedule_drink": {
+      "text": "喝水",
+      "request_sha256": "d8bbdd9fa058726e3f63f4bf33e04e04dfe2fc99b010961895398dd28a25f43c",
+      "wav_sha256": "0b1a8f7d6661cc70605c393188927f75524d1fb0b9564219b7d6b4d6b2742138",
+      "wav_bytes": 53804,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 26880,
+        "duration_ms": 1120.0,
+        "peak": 30658,
+        "rms": 4543,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "schedule_focus": {
+      "text": "专注",
+      "request_sha256": "35e149028cf2241c18688c10cdd343cc89f085af6525b18c93238e4ece33f1fb",
+      "wav_sha256": "7e1233237fd72113538ab1c5f88b61ccb68a18c31ba1dd092205e92be01d56fb",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 30191,
+        "rms": 4109,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "schedule_ventilate": {
+      "text": "通风",
+      "request_sha256": "ecfd6dd190e1b8e85f254b2dfe6bc875e53bfb735d68830f77401f2c836e694d",
+      "wav_sha256": "8384f6826b1857167a80eb47ebf989f4ab2a7fdd1682aff3dd61a340ce27912d",
+      "wav_bytes": 61484,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 30720,
+        "duration_ms": 1280.0,
+        "peak": 21249,
+        "rms": 3363,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "hour_unit": {
+      "text": "点",
+      "request_sha256": "7cf9a3b3ac1fb041f1ca5d48a432ba5fa75c39df73b557b2eedf5d14978ab8b1",
+      "wav_sha256": "e0be980970de303d05fd775dbc5fd3453762068b14fc8ea162b124c65eb6da1c",
+      "wav_bytes": 53804,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 26880,
+        "duration_ms": 1120.0,
+        "peak": 20801,
+        "rms": 3310,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "minute_unit": {
+      "text": "分",
+      "request_sha256": "3aa1ee3d056b9f2d0c716e9ca32ae368b46f7a95cd2a99f13e8134bb156498d2",
+      "wav_sha256": "4f67399a9a87a4926d46e89e1afc25848b6580ffa1087de6735ee8224b107be1",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 32441,
+        "rms": 4144,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "whole_hour": {
+      "text": "整",
+      "request_sha256": "493087740ea1eb19bcb04454c4b8fa2fb83a508e4a981295623016d77e145eda",
+      "wav_sha256": "807c82040f8153efb4bd9761378e1a91e85377e4426fa3d45cd40f502f377406",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 11555,
+        "rms": 1488,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    },
+    "half_hour": {
+      "text": "半",
+      "request_sha256": "7967390089919f8cbe13955cf4a9d74693692eec1027c659ead2703fb76c64f7",
+      "wav_sha256": "63a0f0e4270b772ceddaae6396ab62632ae91ee9ec784d3971a4be3fd3c7d92b",
+      "wav_bytes": 46124,
+      "wav": {
+        "channels": 1,
+        "sample_width": 2,
+        "sample_rate": 24000,
+        "frames": 23040,
+        "duration_ms": 960.0,
+        "peak": 20127,
+        "rms": 3218,
+        "full_scale_samples": 0
+      },
+      "response_id": null,
+      "audio_id": null,
+      "finish_reason": "reused-local-wav",
+      "response_model": "mimo-v2.5-tts"
+    }
+  }
+}

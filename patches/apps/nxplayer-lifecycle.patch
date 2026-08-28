@@ -1,0 +1,515 @@
+diff --git a/include/system/nxplayer.h b/include/system/nxplayer.h
+index 8d612d7b5..a60578775 100644
+--- a/include/system/nxplayer.h
++++ b/include/system/nxplayer.h
+@@ -54,17 +54,37 @@ struct nxplayer_tone_s
+   uint32_t pitch_freq;   /* Pitch frequency */
+ };
+ 
++enum nxplayer_state_e
++{
++  NXPLAYER_STATE_IDLE = 0,
++  NXPLAYER_STATE_STARTING,
++  NXPLAYER_STATE_PLAYING,
++  NXPLAYER_STATE_PAUSED,
++  NXPLAYER_STATE_STOPPING
++};
++
++struct nxplayer_status_s
++{
++  enum nxplayer_state_e state;
++  int result;
++};
++
+ /* This structure describes the internal state of the NxPlayer */
+ 
+ struct nxplayer_s
+ {
+-  int             state;                       /* Current player state */
++  enum nxplayer_state_e state;                  /* Current player state */
+   int             dev_fd;                      /* File descriptor of active device */
+   mqd_t           mq;                          /* Message queue for the playthread */
+   char            mqname[32];                  /* Name of our message queue */
+   pthread_t       play_id;                     /* Thread ID of the playthread */
+   int             crefs;                       /* Number of references to the player */
+   pthread_mutex_t mutex;                       /* Thread sync mutex */
++  pthread_cond_t  cond;                        /* Lifecycle state condition */
++  int             result;                      /* Last playback result */
++  bool            stop_requested;              /* Stop during startup/playback */
++  bool            thread_exited;               /* Playthread reached terminal cleanup */
++  bool            join_in_progress;            /* One external thread owns pthread_join */
+   int             fd;                          /* File descriptor of open file */
+ #ifdef CONFIG_NXPLAYER_INCLUDE_PREFERRED_DEVICE
+   char            prefdevice[CONFIG_NAME_MAX]; /* Preferred audio device */
+@@ -281,6 +301,23 @@ int nxplayer_playtone(FAR struct nxplayer_s *pplayer, uint32_t samprate,
+ int nxplayer_stop(FAR struct nxplayer_s *pplayer);
+ #endif
+ 
++/****************************************************************************
++ * Name: nxplayer_getstatus
++ *
++ *   Get a synchronized snapshot of the current playback lifecycle.
++ ****************************************************************************/
++
++int nxplayer_getstatus(FAR struct nxplayer_s *pplayer,
++                       FAR struct nxplayer_status_s *status);
++
++/****************************************************************************
++ * Name: nxplayer_wait
++ *
++ *   Wait until the current playthread has exited and return its result.
++ ****************************************************************************/
++
++int nxplayer_wait(FAR struct nxplayer_s *pplayer);
++
+ /****************************************************************************
+  * Name: nxplayer_pause
+  *
+diff --git a/system/nxplayer/nxplayer.c b/system/nxplayer/nxplayer.c
+index ee290de78..8ca7dc4a2 100644
+--- a/system/nxplayer/nxplayer.c
++++ b/system/nxplayer/nxplayer.c
+@@ -39,6 +39,7 @@
+ #include <string.h>
+ #include <strings.h>
+ #include <sys/ioctl.h>
++#include <time.h>
+ #include <sys/types.h>
+ #include <sys/param.h>
+ #include <unistd.h>
+@@ -58,10 +59,6 @@
+  * Pre-processor Definitions
+  ****************************************************************************/
+ 
+-#define NXPLAYER_STATE_IDLE      0
+-#define NXPLAYER_STATE_PLAYING   1
+-#define NXPLAYER_STATE_PAUSED    2
+-
+ #ifndef CONFIG_NXPLAYER_MSG_PRIO
+ #  define CONFIG_NXPLAYER_MSG_PRIO  1
+ #endif
+@@ -795,30 +792,84 @@ static int nxplayer_enqueuebuffer(FAR struct nxplayer_s *pplayer,
+  * Name: nxplayer_jointhread
+  ****************************************************************************/
+ 
+-static void nxplayer_jointhread(FAR struct nxplayer_s *pplayer)
++static void nxplayer_setstate(FAR struct nxplayer_s *pplayer,
++                              enum nxplayer_state_e state, int result)
+ {
+-  FAR void *value;
+-  int id = 0;
++  pthread_mutex_lock(&pplayer->mutex);
++  pplayer->state = state;
++  pplayer->result = result;
++  pthread_mutex_unlock(&pplayer->mutex);
++}
++
++static bool nxplayer_stoprequested(FAR struct nxplayer_s *pplayer)
++{
++  bool stop_requested;
++
++  pthread_mutex_lock(&pplayer->mutex);
++  stop_requested = pplayer->stop_requested;
++  pthread_mutex_unlock(&pplayer->mutex);
++  return stop_requested;
++}
++
++static void nxplayer_refput(FAR struct nxplayer_s *pplayer)
++{
++  int refcount;
+ 
+-  if (gettid() == pplayer->play_id)
++  pthread_mutex_lock(&pplayer->mutex);
++  refcount = pplayer->crefs--;
++  pthread_mutex_unlock(&pplayer->mutex);
++
++  if (refcount == 1)
+     {
+-      return;
++      pthread_cond_destroy(&pplayer->cond);
++      pthread_mutex_destroy(&pplayer->mutex);
++      free(pplayer);
+     }
++}
++
++static int nxplayer_jointhread(FAR struct nxplayer_s *pplayer)
++{
++  FAR void *value;
++  pthread_t id;
++  int result;
++  int ret;
+ 
+   pthread_mutex_lock(&pplayer->mutex);
++  while (pplayer->join_in_progress)
++    {
++      pthread_cond_wait(&pplayer->cond, &pplayer->mutex);
++    }
+ 
+-  if (pplayer->play_id > 0)
++  id = pplayer->play_id;
++  if (id <= 0)
+     {
+-      id = pplayer->play_id;
+-      pplayer->play_id = 0;
++      result = pplayer->result;
++      pthread_mutex_unlock(&pplayer->mutex);
++      return result;
+     }
+ 
++  if (gettid() == id)
++    {
++      pthread_mutex_unlock(&pplayer->mutex);
++      return -EDEADLK;
++    }
++
++  pplayer->join_in_progress = true;
+   pthread_mutex_unlock(&pplayer->mutex);
+ 
+-  if (id > 0)
++  ret = pthread_join(id, &value);
++
++  pthread_mutex_lock(&pplayer->mutex);
++  if (ret == OK && pplayer->play_id == id)
+     {
+-      pthread_join(id, &value);
++      pplayer->play_id = 0;
+     }
++
++  pplayer->join_in_progress = false;
++  result = ret == OK ? pplayer->result : -ret;
++  pthread_cond_broadcast(&pplayer->cond);
++  pthread_mutex_unlock(&pplayer->mutex);
++  return result;
+ }
+ 
+ /****************************************************************************
+@@ -903,6 +954,16 @@ static FAR void *nxplayer_playthread(pthread_addr_t pvarg)
+         }
+     }
+ 
++  /* A stop can arrive after nxplayer_playraw() returns but before any audio
++   * has been queued.  Honor it without starting the device.
++   */
++
++  if (nxplayer_stoprequested(pplayer))
++    {
++      running = false;
++      goto err_out;
++    }
++
+   /* Fill up the pipeline with enqueued buffers */
+ 
+   for (x = 0; x < buf_info.nbuffers; x++)
+@@ -992,7 +1053,10 @@ static FAR void *nxplayer_playthread(pthread_addr_t pvarg)
+   audinfo("%d buffers queued, running=%d streaming=%d\n",
+           x, running, streaming);
+ 
+-  /* Start the audio device */
++  /* Start the audio device.  A stop requested after buffers were queued is
++   * consumed by the normal playback message loop so those buffers are
++   * returned by the lower half before cleanup.
++   */
+ 
+   if (running && !failed)
+     {
+@@ -1016,9 +1080,14 @@ static FAR void *nxplayer_playthread(pthread_addr_t pvarg)
+ 
+   if (running && !failed)
+     {
+-      /* Indicate we are playing a file */
++      /* Indicate we are playing a file unless a stop was already requested
++       * during asynchronous startup.
++       */
+ 
+-      pplayer->state = NXPLAYER_STATE_PLAYING;
++      pthread_mutex_lock(&pplayer->mutex);
++      pplayer->state = pplayer->stop_requested ?
++                       NXPLAYER_STATE_STOPPING : NXPLAYER_STATE_PLAYING;
++      pthread_mutex_unlock(&pplayer->mutex);
+ 
+       /* Set initial parameters such as volume, bass, etc.
+        * REVISIT:  Shouldn't this actually be done BEFORE we start playing?
+@@ -1261,21 +1330,22 @@ err_out:
+   pplayer->dev_fd = -1;                   /* Mark device as closed */
+   DEBUGVERIFY(mq_close(pplayer->mq));     /* Close the message queue */
+   mq_unlink(pplayer->mqname);             /* Unlink the message queue */
+-  pplayer->ops   = NULL;                  /* Clear offload parser */
++  pplayer->ops = NULL;                    /* Clear offload parser */
++  pplayer->result = pplayer->stop_requested ? -ECANCELED :
++                    failed ? (ret < 0 ? ret : -EIO) : OK;
++  pplayer->stop_requested = false;
+   pplayer->state = NXPLAYER_STATE_IDLE;   /* Go to IDLE */
++  pplayer->thread_exited = true;
+ 
+   /* Clear the tone field */
+ 
+   memset(&pplayer->tone, 0, sizeof(pplayer->tone));
+-
++  pthread_cond_broadcast(&pplayer->cond);
+   pthread_mutex_unlock(&pplayer->mutex);
+ 
+-  /* The playthread is done with the context.  Release it, which may
+-   * actually cause the context to be freed if the creator has already
+-   * abandoned (released) the context too.
+-   */
++  /* Drop the playthread reference without trying to join our own thread. */
+ 
+-  nxplayer_release(pplayer);
++  nxplayer_refput(pplayer);
+ 
+   audinfo("Exit\n");
+ 
+@@ -1807,34 +1877,72 @@ int nxplayer_setdevice(FAR struct nxplayer_s *pplayer,
+ int nxplayer_stop(FAR struct nxplayer_s *pplayer)
+ {
+   struct audio_msg_s term_msg;
++  struct timespec deadline;
++  mqd_t mq;
++  bool notify;
++  int ret;
+ 
+   DEBUGASSERT(pplayer != NULL);
+ 
+-  /* Validate we are not in IDLE state */
++  /* Publish the predicate while synchronized, but never perform a possibly
++   * blocking queue send while holding the lifecycle mutex.
++   */
+ 
+   pthread_mutex_lock(&pplayer->mutex);
+-  if (pplayer->state == NXPLAYER_STATE_IDLE)
++  notify = pplayer->state != NXPLAYER_STATE_IDLE && !pplayer->thread_exited;
++  mq = pplayer->mq;
++  if (notify)
+     {
+-      pthread_mutex_unlock(&pplayer->mutex);
+-      return OK;
++      pplayer->stop_requested = true;
++      pplayer->state = NXPLAYER_STATE_STOPPING;
++      pplayer->result = -EINPROGRESS;
+     }
+ 
+   pthread_mutex_unlock(&pplayer->mutex);
+ 
+-  /* Notify the playback thread that it needs to cancel the playback */
+-
+-  term_msg.msg_id = AUDIO_MSG_STOP;
+-  term_msg.u.data = 0;
+-  mq_send(pplayer->mq, (FAR const char *)&term_msg, sizeof(term_msg),
+-          CONFIG_NXPLAYER_MSG_PRIO);
++  if (notify)
++    {
++      term_msg.msg_id = AUDIO_MSG_STOP;
++      term_msg.u.data = 0;
++      clock_gettime(CLOCK_REALTIME, &deadline);
++      deadline.tv_sec++;
++      ret = mq_timedsend(mq, (FAR const char *)&term_msg, sizeof(term_msg),
++                         CONFIG_NXPLAYER_MSG_PRIO, &deadline);
++      if (ret < 0 && errno != EBADF)
++        {
++          auderr("ERROR: Failed to send stop message: %d\n", errno);
++        }
++    }
+ 
+-  /* Join the thread.  The thread will do all the cleanup. */
++  ret = nxplayer_wait(pplayer);
++  return ret == -ECANCELED ? OK : ret;
++}
++#endif /* CONFIG_AUDIO_EXCLUDE_STOP */
+ 
+-  nxplayer_jointhread(pplayer);
++int nxplayer_getstatus(FAR struct nxplayer_s *pplayer,
++                       FAR struct nxplayer_status_s *status)
++{
++  if (pplayer == NULL || status == NULL)
++    {
++      return -EINVAL;
++    }
+ 
++  pthread_mutex_lock(&pplayer->mutex);
++  status->state = pplayer->state;
++  status->result = pplayer->result;
++  pthread_mutex_unlock(&pplayer->mutex);
+   return OK;
+ }
+-#endif /* CONFIG_AUDIO_EXCLUDE_STOP */
++
++int nxplayer_wait(FAR struct nxplayer_s *pplayer)
++{
++  if (pplayer == NULL)
++    {
++      return -EINVAL;
++    }
++
++  return nxplayer_jointhread(pplayer);
++}
+ 
+ /****************************************************************************
+  * Name: nxplayer_playinternal
+@@ -1877,7 +1985,19 @@ static int nxplayer_playinternal(FAR struct nxplayer_s *pplayer,
+   struct ap_buffer_info_s  buf_info;
+   struct audio_caps_s      caps;
+   int                      min_channels;
+-  int                 ret;
++  bool                     mq_opened = false;
++  bool                     mq_registered = false;
++  bool                     reserved = false;
++  bool                     thread_ref = false;
++  int                      ret;
++
++  /* Finish any terminal thread before reusing the player resources. */
++
++  ret = nxplayer_jointhread(pplayer);
++  if (ret == -EINPROGRESS)
++    {
++      return -EBUSY;
++    }
+ 
+   /* Try to open the device */
+ 
+@@ -1907,6 +2027,7 @@ static int nxplayer_playinternal(FAR struct nxplayer_s *pplayer,
+       goto err_out;
+     }
+ 
++  reserved = true;
+   caps.ac_len = sizeof(caps);
+   caps.ac_type = AUDIO_TYPE_OUTPUT;
+   caps.ac_subtype = AUDIO_TYPE_QUERY;
+@@ -1970,20 +2091,32 @@ static int nxplayer_playinternal(FAR struct nxplayer_s *pplayer,
+       goto err_out;
+     }
+ 
+-  /* Register our message queue with the audio device */
++  mq_opened = true;
+ 
+-  ioctl(pplayer->dev_fd, AUDIOIOC_REGISTERMQ, (unsigned long)pplayer->mq);
++  /* Register our message queue with the audio device */
+ 
+-  /* Check if there was a previous thread and join it if there was
+-   * to perform clean-up.
+-   */
++  ret = ioctl(pplayer->dev_fd, AUDIOIOC_REGISTERMQ,
++              (unsigned long)pplayer->mq);
++  if (ret < 0)
++    {
++      ret = -errno;
++      goto err_out;
++    }
+ 
+-  nxplayer_jointhread(pplayer);
++  mq_registered = true;
+ 
+   /* Start the playfile thread to stream the media file to the
+-   * audio device.
++   * audio device.  Publish STARTING before the asynchronous thread can be
++   * observed by callers so IDLE always means a terminal lifecycle.
+    */
+ 
++  pthread_mutex_lock(&pplayer->mutex);
++  pplayer->state = NXPLAYER_STATE_STARTING;
++  pplayer->result = -EINPROGRESS;
++  pplayer->stop_requested = false;
++  pplayer->thread_exited = false;
++  pthread_mutex_unlock(&pplayer->mutex);
++
+   ret = pthread_attr_init(&tattr);
+   if (ret != OK)
+     {
+@@ -2002,6 +2135,7 @@ static int nxplayer_playinternal(FAR struct nxplayer_s *pplayer,
+    */
+ 
+   nxplayer_reference(pplayer);
++  thread_ref = true;
+   ret = pthread_create(&pplayer->play_id, &tattr, nxplayer_playthread,
+                        (pthread_addr_t) pplayer);
+   pthread_attr_destroy(&tattr);
+@@ -2017,8 +2151,41 @@ static int nxplayer_playinternal(FAR struct nxplayer_s *pplayer,
+   return OK;
+ 
+ err_out:
++  if (thread_ref)
++    {
++      nxplayer_refput(pplayer);
++    }
++
++  if (mq_registered)
++    {
++      ioctl(pplayer->dev_fd, AUDIOIOC_UNREGISTERMQ,
++            (unsigned long)pplayer->mq);
++    }
++
++  if (mq_opened)
++    {
++      mq_close(pplayer->mq);
++      mq_unlink(pplayer->mqname);
++      pplayer->mq = (mqd_t)-1;
++    }
++
++  if (reserved)
++    {
++#ifdef CONFIG_AUDIO_MULTI_SESSION
++      ioctl(pplayer->dev_fd, AUDIOIOC_RELEASE,
++            (unsigned long)pplayer->session);
++#else
++      ioctl(pplayer->dev_fd, AUDIOIOC_RELEASE, 0);
++#endif
++    }
++
+   close(pplayer->dev_fd);
+   pplayer->dev_fd = -1;
++  pthread_mutex_lock(&pplayer->mutex);
++  pplayer->thread_exited = true;
++  pthread_cond_broadcast(&pplayer->cond);
++  pthread_mutex_unlock(&pplayer->mutex);
++  nxplayer_setstate(pplayer, NXPLAYER_STATE_IDLE, ret);
+ 
+   return ret;
+ }
+@@ -2327,6 +2494,10 @@ FAR struct nxplayer_s *nxplayer_create(void)
+   /* Initialize the context data */
+ 
+   pplayer->state = NXPLAYER_STATE_IDLE;
++  pplayer->result = OK;
++  pplayer->stop_requested = false;
++  pplayer->thread_exited = true;
++  pplayer->join_in_progress = false;
+   pplayer->dev_fd = -1;
+   pplayer->fd = -1;
+ #ifdef CONFIG_NXPLAYER_INCLUDE_PREFERRED_DEVICE
+@@ -2362,6 +2533,7 @@ FAR struct nxplayer_s *nxplayer_create(void)
+ #endif
+ 
+   pthread_mutex_init(&pplayer->mutex, NULL);
++  pthread_cond_init(&pplayer->cond, NULL);
+ 
+   return pplayer;
+ }
+@@ -2381,25 +2553,12 @@ FAR struct nxplayer_s *nxplayer_create(void)
+ 
+ void nxplayer_release(FAR struct nxplayer_s *pplayer)
+ {
+-  int         refcount;
+-
+-  /* Check if there was a previous thread and join it if there was */
++  /* External owners wait for the playthread before dropping their reference.
++   * The playthread itself uses nxplayer_refput() and never joins itself.
++   */
+ 
+   nxplayer_jointhread(pplayer);
+-
+-  pthread_mutex_lock(&pplayer->mutex);
+-
+-  /* Reduce the reference count */
+-
+-  refcount = pplayer->crefs--;
+-  pthread_mutex_unlock(&pplayer->mutex);
+-
+-  /* If the ref count *was* one, then free the context */
+-
+-  if (refcount == 1)
+-    {
+-      free(pplayer);
+-    }
++  nxplayer_refput(pplayer);
+ }
+ 
+ /****************************************************************************

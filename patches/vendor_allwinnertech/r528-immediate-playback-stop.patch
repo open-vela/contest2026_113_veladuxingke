@@ -1,0 +1,431 @@
+diff --git a/chips/r528/components/audio/sunxi_alsa.c b/chips/r528/components/audio/sunxi_alsa.c
+index 286223c2..c678c9cd 100755
+--- a/chips/r528/components/audio/sunxi_alsa.c
++++ b/chips/r528/components/audio/sunxi_alsa.c
+@@ -228,18 +228,33 @@ static int sunxi_get_latency(struct audio_lowerhalf_s *dev,
+ static void
+ sunxi_audio_setvolume(FAR struct sunxi_dev_s *priv, uint16_t volume)
+ {
++	static const uint8_t volume_to_reg[101] = {
++		0x00, 0x6b, 0x73, 0x77, 0x7b, 0x7d, 0x7f, 0x81,
++		0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
++		0x8b, 0x8b, 0x8c, 0x8d, 0x8d, 0x8e, 0x8e, 0x8f,
++		0x8f, 0x90, 0x90, 0x91, 0x91, 0x92, 0x92, 0x92,
++		0x93, 0x93, 0x94, 0x94, 0x94, 0x94, 0x95, 0x95,
++		0x95, 0x96, 0x96, 0x96, 0x96, 0x97, 0x97, 0x97,
++		0x97, 0x98, 0x98, 0x98, 0x98, 0x99, 0x99, 0x99,
++		0x99, 0x99, 0x9a, 0x9a, 0x9a, 0x9a, 0x9a, 0x9b,
++		0x9b, 0x9b, 0x9b, 0x9b, 0x9c, 0x9c, 0x9c, 0x9c,
++		0x9c, 0x9c, 0x9d, 0x9d, 0x9d, 0x9d, 0x9d, 0x9d,
++		0x9d, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e,
++		0x9f, 0x9f, 0x9f, 0x9f, 0x9f, 0x9f, 0x9f, 0x9f,
++		0xa0, 0xa0, 0xa0, 0xa0, 0xa0
++	};
+ 	int numid;
+ 	int ret;
+-	uint32_t reg_vol;
++	uint8_t reg_vol;
+ 
+-	/* Map incoming percent (0..100) to DAC_VOL_L/R register range (0..0xFF,
+-	 * where 0xFF is 0dB). The upper layer passes a percentage, but the codec
+-	 * digital volume register is 8-bit, so a direct write left it almost muted.
++	/* DAC_VOL_L/R use 0xa0 for 0 dB and 0x00 for mute.  Convert the
++	 * user-facing linear amplitude percentage to 0.75 dB register steps and
++	 * cap the result at 0 dB so normal volume control cannot apply gain.
+ 	 */
+ 
+ 	if (volume > 100)
+ 		volume = 100;
+-	reg_vol = (uint32_t)volume * 0xFF / 100;
++	reg_vol = volume_to_reg[volume];
+ 
+ 	numid = 6;      /* DACL digital volume control ID */
+ 	ret = snd_ctl_set_bynum(CONFIG_AW_AUDIO_CODEC_DEFAULT_CARDNAME, numid, reg_vol);
+@@ -745,6 +760,10 @@ int audio_thread_stop(sem_t *sem, void *thread)
+ {
+ 	int ret;
+ 
++	if (thread == NULL) {
++		return OK;
++	}
++
+ 	ret = nxsem_tickwait_uninterruptible(sem, MS_TO_OSTICK(10000));
+ 	if (ret != OK) {
+ 		syslog(LOG_INFO, "ret:%d, wait thread quit timeout!\n", ret);
+@@ -752,9 +771,7 @@ int audio_thread_stop(sem_t *sem, void *thread)
+ 	}
+ 
+ 	sem_destroy(sem);
+-	thread = NULL;
+-
+-	return 0;
++	return ret;
+ }
+ #endif
+ 
+@@ -810,6 +827,7 @@ static int sunxi_audio_start(FAR struct audio_lowerhalf_s *dev)
+ 		syslog(LOG_ERR, "ERROR: Couldn't allocate message queue\n");
+ 		return ret;
+ 	}
++	priv->mq_opened = true;
+ 
+ #if (defined CONFIG_AW_AUDIO_RPMSG_CTRL)
+ 	if (priv->record)
+@@ -867,6 +885,8 @@ static int sunxi_audio_start(FAR struct audio_lowerhalf_s *dev)
+ 	pthread_mutex_init(&priv->mutex, NULL);
+ 	pthread_cond_init(&priv->cond_pause, NULL);
+ 	sem_init(&priv->start_handle, 0, 0);
++	priv->sync_initialized = true;
++	priv->start_result = -EINPROGRESS;
+ 
+ 	/* Start our thread for sending data to the device */
+ 
+@@ -880,20 +900,54 @@ static int sunxi_audio_start(FAR struct audio_lowerhalf_s *dev)
+ 							stack_size, (sched_get_priority_max(SCHED_FIFO) - 3));
+ 	if (!priv->task)
+ 	{
++		ret = -EIO;
++		sem_destroy(&priv->sem);
+ 		syslog(LOG_ERR, "ERROR: pthread_create failed: %d\n", ret);
++		goto start_error;
+ 	}
+ 	else
+ 	{
+-		hal_thread_start(priv->task);
++		priv->task_started = true;
++			hal_thread_start(priv->task);
+ 		syslog(LOG_INFO,"Created worker thread\n");
+ 	}
+ 
+ 	ret = nxsem_tickwait_uninterruptible(&priv->start_handle, MS_TO_OSTICK(1000));
+ 	if (ret != OK) {
+ 		syslog(LOG_ERR, "wait bind start_handle timeout!\n");
+-		return ret;
++		goto start_error;
+ 	}
+ 
++	if (priv->start_result < 0) {
++		ret = priv->start_result;
++		goto start_error;
++	}
++
++	return OK;
++
++start_error:
++	priv->running = false;
++	if (priv->task_started) {
++		audio_thread_stop(&priv->sem, priv->task);
++		priv->task = NULL;
++		priv->task_started = false;
++	}
++	if (priv->handle != NULL) {
++		snd_vela_pcm_drop(priv->handle);
++		snd_vela_pcm_close(priv->handle);
++		priv->handle = NULL;
++	}
++	if (priv->mq_opened) {
++		file_mq_close(&priv->mq);
++		file_mq_unlink(priv->mqname);
++		priv->mq_opened = false;
++	}
++	if (priv->sync_initialized) {
++		pthread_mutex_destroy(&priv->mutex);
++		pthread_cond_destroy(&priv->cond_pause);
++		sem_destroy(&priv->start_handle);
++		priv->sync_initialized = false;
++	}
+ 	return ret;
+ 
+ }
+@@ -915,6 +969,7 @@ static int sunxi_audio_stop(FAR struct audio_lowerhalf_s *dev)
+ {
+ 	FAR struct sunxi_dev_s *priv = (FAR struct sunxi_dev_s *)dev;
+ 	struct audio_msg_s term_msg;
++	bool interrupt;
+ 	int ret = 0;
+ 	unsigned int prio;
+ 	syslog(LOG_INFO, "%d, %s\n", __LINE__, __func__);
+@@ -929,15 +984,22 @@ static int sunxi_audio_stop(FAR struct audio_lowerhalf_s *dev)
+ 		return ret;
+ 	}
+ 
+-	/* Send a message to stop all audio streaming */
+-	term_msg.msg_id = AUDIO_MSG_STOP;
+-	term_msg.u.data = 0;
++	/* Natural completion has already exited the worker.  Only an explicit
++	 * interruption needs a STOP message, and only while the queue is valid.
++	 */
++	interrupt = priv->record || !priv->natural_complete;
+ 	priv->running = false;
+-	//priv->paused = false;
++	if (priv->sync_initialized)
++		pthread_cond_signal(&priv->cond_pause);
+ 
+-	pthread_cond_signal(&priv->cond_pause);
+-	file_mq_send(&priv->mq, (FAR const char *)&term_msg, sizeof(term_msg),
+-				prio);
++	if (interrupt && priv->mq_opened && priv->task_started) {
++		term_msg.msg_id = AUDIO_MSG_STOP;
++		term_msg.u.data = 0;
++		ret = file_mq_send(&priv->mq, (FAR const char *)&term_msg,
++						   sizeof(term_msg), prio);
++		if (ret < 0 && ret != -EAGAIN)
++			syslog(LOG_ERR, "ERROR: stop queue send failed: %d\n", ret);
++	}
+ 
+ #if (defined CONFIG_AW_AUDIO_RPMSG_CTRL)
+ 	if (priv->record)
+@@ -954,38 +1016,49 @@ static int sunxi_audio_stop(FAR struct audio_lowerhalf_s *dev)
+ 	}
+ #endif
+ 
+-	if (priv->handle != NULL) {
+-		if (priv->paused) {
+-			ret = snd_vela_pcm_reset(priv->handle);
+-			if (ret < 0)
+-				syslog(LOG_ERR, "%d, reset failed!, return %d\n", __LINE__, ret);
+-		}
+-		priv->paused = false;
++	if (priv->handle != NULL && priv->paused) {
++		ret = snd_vela_pcm_reset(priv->handle);
++		if (ret < 0)
++			syslog(LOG_ERR, "%d, reset failed!, return %d\n", __LINE__, ret);
++	}
++	priv->paused = false;
+ 
+-		ret = snd_vela_pcm_drain(priv->handle);
++	if (priv->handle != NULL) {
++		ret = (!priv->record && interrupt) ?
++			  snd_vela_pcm_drop(priv->handle) :
++			  snd_vela_pcm_drain(priv->handle);
+ 		if (ret < 0)
+-		{
+ 			syslog(LOG_ERR, "stop failed!, return %d\n", ret);
+-		}
++	}
+ 
+-		audio_thread_stop(&priv->sem, priv->task);
+-		/* close card */
++	if (priv->task_started) {
++		ret = audio_thread_stop(&priv->sem, priv->task);
++		priv->task = NULL;
++		priv->task_started = false;
++		if (ret < 0)
++			syslog(LOG_ERR, "worker stop failed: %d\n", ret);
++	}
++
++	if (priv->handle != NULL) {
+ 		ret = snd_vela_pcm_close(priv->handle);
++		priv->handle = NULL;
+ 		if (ret < 0)
+-		{
+ 			syslog(LOG_ERR, "audio close error:%d\n", ret);
+-			return ret;
+-		}
+-		priv->handle = NULL;
+-	} else {
+-		audio_thread_stop(&priv->sem, priv->task);
+ 	}
+ 
+-	pthread_mutex_destroy(&priv->mutex);
+-	pthread_cond_destroy(&priv->cond_pause);
+-	sem_destroy(&priv->start_handle);
++	if (priv->mq_opened) {
++		file_mq_close(&priv->mq);
++		file_mq_unlink(priv->mqname);
++		priv->mq_opened = false;
++	}
++
++	if (priv->sync_initialized) {
++		pthread_mutex_destroy(&priv->mutex);
++		pthread_cond_destroy(&priv->cond_pause);
++		sem_destroy(&priv->start_handle);
++		priv->sync_initialized = false;
++	}
+ 
+-	/* REVISIT: */
+ 	return OK;
+ }
+ #endif
+@@ -1275,6 +1348,7 @@ static void record_workerthread(void *arg)
+ 
+ /* Mark ourself as running */
+ 	priv->running = true;
++	memset(&msg, 0, sizeof(msg));
+ 
+ #if (!defined CONFIG_AW_AUDIO_RPMSG_CTRL)
+ 
+@@ -1288,6 +1362,10 @@ static void record_workerthread(void *arg)
+ 	if (ret < 0)
+ 	{
+ 		syslog(LOG_ERR, "audio open error:%d\n", ret);
++		priv->start_result = ret;
++		priv->running = false;
++		sem_post(&priv->start_handle);
++		sem_post(&priv->sem);
+ 		return;
+ 	}
+ 
+@@ -1297,6 +1375,11 @@ static void record_workerthread(void *arg)
+ 	{
+ 		syslog(LOG_ERR, "set_param error:%d\n", ret);
+ 		priv->running = false;
++		priv->start_result = ret;
++	}
++	else
++	{
++		priv->start_result = OK;
+ 	}
+ 	sem_post(&priv->start_handle);
+ 
+@@ -1399,11 +1482,6 @@ static void record_workerthread(void *arg)
+ 
+ 	nxmutex_unlock(&priv->pendlock);
+ 
+-	/* Close the message queue */
+-
+-	file_mq_close(&priv->mq);
+-	file_mq_unlink(priv->mqname);
+-
+ 	/* Send an AUDIO_MSG_COMPLETE message to the client */
+ 
+ #ifdef CONFIG_AUDIO_MULTI_SESSION
+@@ -1430,6 +1508,7 @@ static void play_workerthread(void *arg)
+ 	struct audio_msg_s msg;
+ 	struct ap_buffer_s *apb;
+ 	unsigned int prio;
++	bool final;
+ 	int ret, msglen;
+ 	void *equalizer = NULL;
+ 
+@@ -1441,6 +1520,8 @@ static void play_workerthread(void *arg)
+ 	priv->terminating = false;
+ #endif
+ 	priv->running = true;
++	priv->natural_complete = false;
++	memset(&msg, 0, sizeof(msg));
+ 
+ 	direction = priv->record ? SND_VELA_PCM_STREAM_CAPTURE
+ 								: SND_VELA_PCM_STREAM_PLAYBACK;
+@@ -1450,6 +1531,10 @@ static void play_workerthread(void *arg)
+ 	if (ret < 0)
+ 	{
+ 		syslog(LOG_ERR, "audio open error:%d\n", ret);
++		priv->start_result = ret;
++		priv->running = false;
++		sem_post(&priv->start_handle);
++		sem_post(&priv->sem);
+ 		return;
+ 	}
+ 
+@@ -1462,12 +1547,19 @@ static void play_workerthread(void *arg)
+ 	{
+ 		syslog(LOG_ERR, "set_param error:%d\n", ret);
+ 		priv->running = false;
++		priv->start_result = ret;
+ 	}
+ 
+-	ret = snd_vela_pcm_prepare(priv->handle);
+-	if (ret < 0) {
+-		syslog(LOG_INFO, "prepare failed. return %d\n", ret);
++	if (ret >= 0) {
++		ret = snd_vela_pcm_prepare(priv->handle);
++		if (ret < 0) {
++			syslog(LOG_INFO, "prepare failed. return %d\n", ret);
++			priv->running = false;
++			priv->start_result = ret;
++		}
+ 	}
++	if (ret >= 0)
++		priv->start_result = OK;
+ 	sem_post(&priv->start_handle);
+ 
+ 	if (priv->eq_enable) {
+@@ -1485,6 +1577,7 @@ static void play_workerthread(void *arg)
+ 			continue;
+ 		}
+ 		frames = apb->nbytes / (priv->bpsamp / 8 * priv->nchannels);
++		final = (apb->flags & AUDIO_APB_FINAL) != 0;
+ 
+ 		start_before++;
+ 		if (priv->eq_enable && equalizer)
+@@ -1502,22 +1595,13 @@ static void play_workerthread(void *arg)
+ 		if (samples == -EAGAIN) {
+ 			usleep(10000);
+ 			continue;
+-		} else if ((samples == -EPIPE) && (msg.msg_id == AUDIO_MSG_ENQUEUE)) {
++		} else if (samples == -EPIPE) {
+ 			if (!priv->running) {
+ 				syslog(LOG_INFO, "%d, receive the stop cmd\n", __LINE__);
+ 				break;
+ 			}
+ 			xrun(priv->handle);
+ 			continue;
+-		} else if ((samples == -EPIPE) && (msg.msg_id == AUDIO_MSG_NONE)) {
+-			syslog(LOG_INFO, "upper buffer sending is slow\n");
+-			usleep(5000);
+-			msglen = file_mq_receive(&priv->mq, (FAR char *)&msg,
+-								sizeof(msg), &prio);
+-			continue;
+-		} else if (samples == -EPIPE) {
+-			syslog(LOG_INFO, "underrun occured\n");
+-			continue;
+ 		} else if (samples == -ESTRPIPE) {
+ 			continue;
+ 		} else if ((samples < 0) && (priv->running)) {
+@@ -1540,13 +1624,25 @@ static void play_workerthread(void *arg)
+ 		priv->dev.upper(priv->dev.priv, AUDIO_CALLBACK_DEQUEUE, apb, OK);
+ 		dq_after++;
+ 
+-		msg.msg_id = 0;
++		if (final) {
++			syslog(LOG_INFO, "playback final buffer complete\n");
++			priv->natural_complete = true;
++			priv->running = false;
++			break;
++		}
++
+ 		msglen = file_mq_receive(&priv->mq, (FAR char *)&msg,
+ 								sizeof(msg), &prio);
+ 
+-		/* Handle the case when we return with no message */
++		/* The queue is non-blocking, so no message is the normal case. */
+ 
+-		if (msglen < sizeof(struct audio_msg_s)) {
++		if (msglen < 0) {
++			if (msglen != -EAGAIN)
++				syslog(LOG_ERR, "ERROR: file_mq_receive failed: %d\n", msglen);
++			continue;
++		}
++
++		if (msglen != sizeof(struct audio_msg_s)) {
+ 			syslog(LOG_ERR, "ERROR: Message too small: %d\n", msglen);
+ 			continue;
+ 		}
+@@ -1601,10 +1697,6 @@ static void play_workerthread(void *arg)
+ 	}
+ 	nxmutex_unlock(&priv->pendlock);
+ 
+-	/* Close the message queue */
+-	file_mq_close(&priv->mq);
+-	file_mq_unlink(priv->mqname);
+-
+   /* Send an AUDIO_MSG_COMPLETE message to the client */
+ #ifdef CONFIG_AUDIO_MULTI_SESSION
+ 	priv->dev.upper(priv->dev.priv, AUDIO_CALLBACK_COMPLETE, NULL, OK, NULL);
+diff --git a/chips/r528/components/audio/sunxi_alsa.h b/chips/r528/components/audio/sunxi_alsa.h
+index ac4323e9..9bf557dd 100755
+--- a/chips/r528/components/audio/sunxi_alsa.h
++++ b/chips/r528/components/audio/sunxi_alsa.h
+@@ -195,6 +195,11 @@ struct sunxi_dev_s
+ 	uint8_t                 nchannels;        /* Number of channels (1~8) */
+ 	uint8_t                 bpsamp;           /* Bits per sample (16 or 32) */
+ 	bool                    running;          /* True: Worker thread is running */
++	bool                    natural_complete; /* Final playback buffer completed */
++	bool                    mq_opened;        /* Worker control queue is open */
++	bool                    task_started;     /* Worker task was created */
++	bool                    sync_initialized; /* Per-stream sync objects initialized */
++	int                     start_result;     /* Worker PCM initialization result */
+ 	bool                    paused;           /* True: Recording is paused */
+ 	bool                    mute;             /* True: Input is muted */
+ 	bool                    record;           /* True: Record, false: Play */

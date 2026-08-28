@@ -1,0 +1,151 @@
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/dev_fb.c b/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/dev_fb.c
+index 780cc621..b229c545 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/dev_fb.c
++++ b/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/dev_fb.c
+@@ -211,22 +211,56 @@ int sunxifb_updatearea(struct fb_vtable_s *vtable, FAR const struct fb_area_s *a
+ {
+ 	hal_dcache_clean_invalidate((unsigned long)g_planeinfo.fbmem, g_planeinfo.fblen);
+ #if defined(CONFIG_SUNXI_DISP2_FB_HW_ROTATION_SUPPORT)
+-	unsigned int *addr = (unsigned int *)0x05103010;
+ 	struct disp_layer_config config;
++	struct disp_manager *mgr = g_disp_drv.mgr[0];
++	unsigned long current_addr;
++	unsigned long dst_addr;
++	unsigned int dst_height;
++	unsigned int y_offset;
++
++	if (!fb_rot || !fb_rot->pinfo || !fb_rot->apply ||
++	    !fb_rot->dst_phy_addr || fb_rot->pinfo->stride == 0) {
++		lcderr("ERROR: framebuffer rotation is unavailable\n");
++		return -ENODEV;
++	}
++
++	if (!mgr || !mgr->get_layer_config || !mgr->set_layer_config) {
++		lcderr("ERROR: display manager is unavailable\n");
++		return -ENODEV;
++	}
++
++	memset(&config, 0, sizeof(config));
+ 	config.channel = 1;
+ 	config.layer_id = 0;
+-	struct disp_manager *mgr =  g_disp_drv.mgr[0];
+-	if (mgr && mgr->get_layer_config)
+-		mgr->get_layer_config(mgr, &config, 1);
+-	int y_offset = (*addr -  (unsigned int)fb_rot->dst_vir_addr) / fb_rot->pinfo->stride;
+-	y_offset = (y_offset + g_videoinfo.yres) % (g_planeinfo.yres_virtual << 1);
+-	if (fb_rot) {
+-		fb_rot->pinfo->yoffset= y_offset;
+-		fb_rot->apply(fb_rot);
++	if (mgr->get_layer_config(mgr, &config, 1) < 0) {
++		lcderr("ERROR: get layer config failed\n");
++		return -EIO;
++	}
++
++	current_addr = (unsigned long)config.info.fb.addr[0];
++	dst_addr = (unsigned long)fb_rot->dst_phy_addr;
++	dst_height = fb_rot->dst_mem_len / fb_rot->pinfo->stride;
++	if (dst_height == 0 || current_addr < dst_addr ||
++	    current_addr >= dst_addr + fb_rot->dst_mem_len) {
++		lcderr("ERROR: invalid rotated framebuffer address: 0x%lx\n",
++		       current_addr);
++		return -EIO;
++	}
++
++	y_offset = (current_addr - dst_addr) / fb_rot->pinfo->stride;
++	y_offset = (y_offset + g_videoinfo.yres) % dst_height;
++	fb_rot->pinfo->yoffset = y_offset;
++	if (fb_rot->apply(fb_rot) < 0) {
++		lcderr("ERROR: framebuffer rotation failed\n");
++		return -EIO;
++	}
++
++	config.info.fb.addr[0] =
++	    (unsigned long long)(dst_addr + fb_rot->pinfo->stride * y_offset);
++	if (mgr->set_layer_config(mgr, &config, 1) < 0) {
++		lcderr("ERROR: set layer config failed\n");
++		return -EIO;
+ 	}
+-	config.info.fb.addr[0] = (unsigned long long)(unsigned int)(fb_rot->dst_phy_addr + fb_rot->pinfo->stride * y_offset);
+-	if (mgr && mgr->set_layer_config)
+-	mgr->set_layer_config(mgr, &config, 1);
+ #endif
+ 	return 0;
+ }
+@@ -465,16 +499,33 @@ if (rotation_degree == 1 || rotation_degree == 3) { // 90或270度才交换
+ 	hal_dcache_clean_invalidate((unsigned long)g_planeinfo.fbmem, g_planeinfo.fblen);
+ #if defined(CONFIG_SUNXI_DISP2_FB_HW_ROTATION_SUPPORT)
+ 	fb_rot = fb_g2d_rot_create(&g_videoinfo, &g_planeinfo, 0, &config);
+-#ifdef CONFIG_DISP_BOOTLOADER_SYNC
+-	unsigned int *addr = (unsigned int *)0x05103010;
+-	config.info.fb.addr[0] = (unsigned long long)(*addr);
+-#endif
+-	if (fb_rot)
+-		fb_rot->apply(fb_rot);
++	if (!fb_rot) {
++		lcderr("ERROR: failed to initialize framebuffer rotation\n");
++		return -ENODEV;
++	}
++
++	ret = fb_rot->apply(fb_rot);
++	if (ret < 0) {
++		lcderr("ERROR: initial framebuffer rotation failed: %d\n", ret);
++		fb_rot->free(fb_rot);
++		fb_rot = NULL;
++		return ret;
++	}
+ #endif
+ 	struct disp_manager *mgr =  g_disp_drv.mgr[display];
+-	if (mgr && mgr->set_layer_config)
++	if (!mgr || !mgr->set_layer_config) {
++		lcderr("ERROR: display manager is unavailable\n");
++		ret = -ENODEV;
++	} else {
+ 		ret = mgr->set_layer_config(mgr, &config, 1);
++	}
++	if (ret < 0) {
++#if defined(CONFIG_SUNXI_DISP2_FB_HW_ROTATION_SUPPORT)
++		fb_rot->free(fb_rot);
++		fb_rot = NULL;
++#endif
++		return ret;
++	}
+ #ifdef CONFIG_FB_OVERLAY
+ 	layer_lock = hal_mutex_create();
+ 	syslog(LOG_DEBUG, "up_fbinitialize:%d", VIDEO_WIDTH * VIDEO_HEIGHT * 3 / 2 * FB_NUM_OVERLAY);
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/fb_g2d_rot.c b/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/fb_g2d_rot.c
+index 1b1d66f4..4e307de1 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/fb_g2d_rot.c
++++ b/chips/r528/drivers/rtos-hal/hal/source/disp2/disp/fb_g2d_rot.c
+@@ -77,7 +77,8 @@ int fb_g2d_rot_apply(struct fb_g2d_rot_t *inst)
+ 	hal_dcache_clean_invalidate((unsigned long)inst->pinfo->fbmem, inst->pinfo->fblen);
+ 	hal_dcache_clean_invalidate((unsigned long)inst->dst_phy_addr, inst->pinfo->fblen);
+ 	bsp_disp_shadow_protect(0, 1);
+-	if(sunxi_g2d_control(G2D_CMD_BITBLT_H ,&inst->info) < 0)
++	ret = sunxi_g2d_control(G2D_CMD_BITBLT_H, &inst->info);
++	if (ret < 0)
+ 		DE_WRN("g2d_blit_h fail!ret:%d\n", ret);
+ 	bsp_disp_shadow_protect(0, 0);
+ 	return ret;
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/disp2/soc/ili9341_lcd_config.c b/chips/r528/drivers/rtos-hal/hal/source/disp2/soc/ili9341_lcd_config.c
+index 22158554..d588755e 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/disp2/soc/ili9341_lcd_config.c
++++ b/chips/r528/drivers/rtos-hal/hal/source/disp2/soc/ili9341_lcd_config.c
+@@ -482,6 +482,18 @@ struct property_t g_disp_config[] = {
+         .type = PROPERTY_INTGER,
+         .v.value = DISP_OUTPUT_TYPE_NONE,
+     },
++#ifdef CONFIG_SUNXI_DISP2_FB_HW_ROTATION_SUPPORT
++    {
++        .name = "disp_rotation_used",
++        .type = PROPERTY_INTGER,
++        .v.value = 1,
++    },
++    {
++        .name = "degree0",
++        .type = PROPERTY_INTGER,
++        .v.value = 3,
++    },
++#endif
+ };
+ 
+ /*LCD1配置 (如果需要双屏)*/
