@@ -1,0 +1,7 @@
+############################################################################
+# Contest 2026 team 113 Wi-Fi manager
+############################################################################
+
+ifneq ($(CONFIG_CONTEST2026_113_WIFI_MANAGER),)
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_113_wifi_manager
+endif

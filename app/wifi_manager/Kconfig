@@ -1,0 +1,25 @@
+#
+# Contest 2026 team 113 Wi-Fi manager
+#
+
+menuconfig CONTEST2026_113_WIFI_MANAGER
+	bool "Contest 2026 team 113 Wi-Fi manager"
+	default n
+	depends on NETUTILS_NETLIB
+	depends on WIRELESS_WAPI
+	depends on LIBC_NETDB
+	---help---
+		Enable the contest Wi-Fi manager. It waits quietly while
+		/data/wifi.cfg is absent and connects when valid credentials appear.
+
+if CONTEST2026_113_WIFI_MANAGER
+
+config CONTEST2026_113_WIFI_MANAGER_PRIORITY
+	int "Wi-Fi manager task priority"
+	default 100
+
+config CONTEST2026_113_WIFI_MANAGER_STACKSIZE
+	int "Wi-Fi manager stack size"
+	default 20480
+
+endif # CONTEST2026_113_WIFI_MANAGER

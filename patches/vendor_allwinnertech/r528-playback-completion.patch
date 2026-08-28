@@ -1,0 +1,88 @@
+diff --git a/chips/r528/components/audio/sunxi_alsa.c b/chips/r528/components/audio/sunxi_alsa.c
+index 286223c2..358a8a47 100755
+--- a/chips/r528/components/audio/sunxi_alsa.c
++++ b/chips/r528/components/audio/sunxi_alsa.c
+@@ -1275,6 +1290,7 @@ static void record_workerthread(void *arg)
+ 
+ /* Mark ourself as running */
+ 	priv->running = true;
++	memset(&msg, 0, sizeof(msg));
+ 
+ #if (!defined CONFIG_AW_AUDIO_RPMSG_CTRL)
+ 
+@@ -1430,6 +1446,7 @@ static void play_workerthread(void *arg)
+ 	struct audio_msg_s msg;
+ 	struct ap_buffer_s *apb;
+ 	unsigned int prio;
++	bool final;
+ 	int ret, msglen;
+ 	void *equalizer = NULL;
+ 
+@@ -1441,6 +1458,7 @@ static void play_workerthread(void *arg)
+ 	priv->terminating = false;
+ #endif
+ 	priv->running = true;
++	memset(&msg, 0, sizeof(msg));
+ 
+ 	direction = priv->record ? SND_VELA_PCM_STREAM_CAPTURE
+ 								: SND_VELA_PCM_STREAM_PLAYBACK;
+@@ -1485,6 +1503,7 @@ static void play_workerthread(void *arg)
+ 			continue;
+ 		}
+ 		frames = apb->nbytes / (priv->bpsamp / 8 * priv->nchannels);
++		final = (apb->flags & AUDIO_APB_FINAL) != 0;
+ 
+ 		start_before++;
+ 		if (priv->eq_enable && equalizer)
+@@ -1502,22 +1521,13 @@ static void play_workerthread(void *arg)
+ 		if (samples == -EAGAIN) {
+ 			usleep(10000);
+ 			continue;
+-		} else if ((samples == -EPIPE) && (msg.msg_id == AUDIO_MSG_ENQUEUE)) {
++		} else if (samples == -EPIPE) {
+ 			if (!priv->running) {
+ 				syslog(LOG_INFO, "%d, receive the stop cmd\n", __LINE__);
+ 				break;
+ 			}
+ 			xrun(priv->handle);
+ 			continue;
+-		} else if ((samples == -EPIPE) && (msg.msg_id == AUDIO_MSG_NONE)) {
+-			syslog(LOG_INFO, "upper buffer sending is slow\n");
+-			usleep(5000);
+-			msglen = file_mq_receive(&priv->mq, (FAR char *)&msg,
+-								sizeof(msg), &prio);
+-			continue;
+-		} else if (samples == -EPIPE) {
+-			syslog(LOG_INFO, "underrun occured\n");
+-			continue;
+ 		} else if (samples == -ESTRPIPE) {
+ 			continue;
+ 		} else if ((samples < 0) && (priv->running)) {
+@@ -1540,13 +1550,24 @@ static void play_workerthread(void *arg)
+ 		priv->dev.upper(priv->dev.priv, AUDIO_CALLBACK_DEQUEUE, apb, OK);
+ 		dq_after++;
+ 
+-		msg.msg_id = 0;
++		if (final) {
++			syslog(LOG_INFO, "playback final buffer complete\n");
++			priv->running = false;
++			break;
++		}
++
+ 		msglen = file_mq_receive(&priv->mq, (FAR char *)&msg,
+ 								sizeof(msg), &prio);
+ 
+-		/* Handle the case when we return with no message */
++		/* The queue is non-blocking, so no message is the normal case. */
++
++		if (msglen < 0) {
++			if (msglen != -EAGAIN)
++				syslog(LOG_ERR, "ERROR: file_mq_receive failed: %d\n", msglen);
++			continue;
++		}
+ 
+-		if (msglen < sizeof(struct audio_msg_s)) {
++		if (msglen != sizeof(struct audio_msg_s)) {
+ 			syslog(LOG_ERR, "ERROR: Message too small: %d\n", msglen);
+ 			continue;
+ 		}

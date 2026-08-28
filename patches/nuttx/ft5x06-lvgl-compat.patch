@@ -1,0 +1,93 @@
+diff --git a/drivers/input/ft5x06.c b/drivers/input/ft5x06.c
+index be5db167865..737056d3e83 100644
+--- a/drivers/input/ft5x06.c
++++ b/drivers/input/ft5x06.c
+@@ -437,6 +437,11 @@ static ssize_t ft5x06_sample(FAR struct ft5x06_dev_s *priv, FAR char *buffer,
+   y = TOUCH_POINT_GET_Y(touch[0]);
+ #endif
+ 
++  if (priv->config->transform != NULL)
++    {
++      priv->config->transform(priv->config, &x, &y);
++    }
++
+   /* Get the touch point ID and event */
+ 
+   event = TOUCH_POINT_GET_EVENT(touch[0]);
+@@ -481,7 +486,7 @@ static ssize_t ft5x06_sample(FAR struct ft5x06_dev_s *priv, FAR char *buffer,
+                   deltay = -deltay;
+                 }
+ 
+-              if (deltax < CONFIG_FT5X06_THRESHX)
++              if (deltay < CONFIG_FT5X06_THRESHY)
+                 {
+                   /* Ignore... no significant change in Y either */
+ 
+@@ -589,6 +594,12 @@ static ssize_t ft5x06_sample(FAR struct ft5x06_dev_s *priv, FAR char *buffer,
+       point[i].x        = TOUCH_POINT_GET_X(touch[i]);
+       point[i].y        = TOUCH_POINT_GET_Y(touch[i]);
+ #endif
++      if (priv->config->transform != NULL)
++        {
++          priv->config->transform(priv->config,
++                                  &point[i].x, &point[i].y);
++        }
++
+       point[i].h        = 0;
+       point[i].w        = 0;
+       point[i].pressure = 0;
+@@ -694,7 +705,15 @@ static int ft5x06_bringup(FAR struct ft5x06_dev_s *priv)
+     }
+ 
+ #ifndef CONFIG_FT5X06_POLLMODE
+-  /* Enable FT5x06 interrupts */
++  /* Select trigger mode and enable FT5x06 interrupts */
++
++  data[0] = FT5X06_GMODE_REG;
++  data[1] = FT5X06_G_MODE_INTERRUPT_TRIGGER;
++  ret = I2C_TRANSFER(priv->i2c, &msg, 1);
++  if (ret < 0)
++    {
++      return ret;
++    }
+ 
+   config->clear(config);
+   config->enable(config, true);
+@@ -945,6 +964,24 @@ static int ft5x06_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
+         }
+         break;
+ 
++      case TSIOC_GETMAXPOINTS:  /* arg: Pointer to uint8_t max points */
++        {
++          FAR uint8_t *ptr = (FAR uint8_t *)((uintptr_t)arg);
++          if (ptr == NULL)
++            {
++              ret = -EINVAL;
++            }
++          else
++            {
++#ifdef CONFIG_FT5X06_SINGLEPOINT
++              *ptr = 1;
++#else
++              *ptr = FT5X06_MAX_TOUCHES;
++#endif
++            }
++        }
++        break;
++
+       default:
+         ret = -ENOTTY;
+         break;
+diff --git a/include/nuttx/input/ft5x06.h b/include/nuttx/input/ft5x06.h
+index ef81fa0cf4b..0a351a90d06 100644
+--- a/include/nuttx/input/ft5x06.h
++++ b/include/nuttx/input/ft5x06.h
+@@ -106,6 +106,8 @@ struct ft5x06_config_s
+   void (*wakeup)(FAR const struct ft5x06_config_s *config);
+   void (*nreset)(FAR const struct ft5x06_config_s *config,
+                  bool state);
++  void (*transform)(FAR const struct ft5x06_config_s *config,
++                    FAR int16_t *x, FAR int16_t *y);
+ };
+ 
+ /****************************************************************************

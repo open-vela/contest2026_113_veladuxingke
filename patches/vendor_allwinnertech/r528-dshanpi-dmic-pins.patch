@@ -1,0 +1,13 @@
+diff --git a/chips/r528/drivers/rtos-hal/hal/source/sound/platform/platforms/dmic-sun8iw20.h b/chips/r528/drivers/rtos-hal/hal/source/sound/platform/platforms/dmic-sun8iw20.h
+index d584725d..7314bb36 100644
+--- a/chips/r528/drivers/rtos-hal/hal/source/sound/platform/platforms/dmic-sun8iw20.h
++++ b/chips/r528/drivers/rtos-hal/hal/source/sound/platform/platforms/dmic-sun8iw20.h
+@@ -49,7 +49,7 @@ dmic_gpio_t g_dmic_gpio = {
+ #ifdef CONFIG_ARCH_BOARD_R528S3_DSHANPI
+ 	.clk	= {GPIOD(20), 4},
+ 	.din0	= {GPIOD(19), 4},
+-	.din1	= {GPIOB(18), 4},
++	.din1	= {GPIOD(18), 4},
+ 	.din2	= {GPIOD(17), -1},
+ 	.din3	= {GPIOG(26), -1},	/* no use */
+ #else	

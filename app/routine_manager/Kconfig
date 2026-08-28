@@ -1,0 +1,165 @@
+#
+# Contest 2026 team 113 desktop routine manager
+#
+
+menuconfig CONTEST2026_113_ROUTINE_MANAGER
+	bool "Contest 2026 team 113 desktop routine manager"
+	default n
+	depends on GRAPHICS_LVGL
+	depends on LV_USE_NUTTX
+	depends on VIDEO_FB
+	depends on LV_USE_CHART
+	depends on LV_USE_LABEL
+	depends on LV_USE_BUTTON
+	depends on LV_USE_MSGBOX
+	---help---
+		Enable the LVGL desktop environment and routine manager.
+		It supports /dev/fb0, /dev/input0, interactive schedules, and an
+		optional TWI3 environment monitor. Audio and voice are not required.
+
+if CONTEST2026_113_ROUTINE_MANAGER
+
+config ROUTINE_MANAGER_PROGNAME
+	string "Routine manager program name"
+	default "routine_mgr"
+
+config ROUTINE_MANAGER_PRIORITY
+	int "Routine manager task priority"
+	default 100
+
+config ROUTINE_MANAGER_STACKSIZE
+	int "Routine manager task stack size"
+	default 40960
+
+config ROUTINE_MANAGER_FONT_PATH
+	string "Chinese UI LVGL binary font path"
+	default "/etc/fonts/font_puhui_20_4.bin"
+	---help---
+		Binary font used by the default Chinese interface. The application
+		uses built-in LVGL fonts when --english or --ascii is selected.
+
+config ROUTINE_MANAGER_DEMO_RATE
+	int "Demo real seconds per simulated hour"
+	range 1 60
+	default 5
+	---help---
+		Acceleration used only by routine_mgr --demo. Live mode follows the
+		local wall clock and does not use this value.
+
+config ROUTINE_MANAGER_UTC_OFFSET_MINUTES
+	int "Civil time offset from UTC in minutes"
+	range -720 840
+	default 480
+	---help---
+		Offset used to convert the UTC system clock into the civil time shown
+		by the UI and used for schedules. The DshanPi default is UTC+8.
+
+config ROUTINE_MANAGER_ENVMON
+	bool "TWI3 SHT40/BH1750/SGP30 environment monitor"
+	default y
+	depends on I2C_DRIVER
+	depends on !DISABLE_PTHREAD
+
+if ROUTINE_MANAGER_ENVMON
+
+config ROUTINE_MANAGER_I2C_PATH
+	string "Environment monitor I2C device"
+	default "/dev/i2c3"
+
+config ROUTINE_MANAGER_ENV_PRIORITY
+	int "Environment worker priority"
+	default 90
+
+config ROUTINE_MANAGER_ENV_STACKSIZE
+	int "Environment worker stack size"
+	default 4096
+
+endif # ROUTINE_MANAGER_ENVMON
+
+config ROUTINE_MANAGER_VOICE
+	bool "DMIC voice interaction demo"
+	default y
+	depends on SYSTEM_NXPLAYER
+	depends on SYSTEM_NXRECORDER
+	depends on !DISABLE_PTHREAD
+	---help---
+		Enable the non-blocking DMIC capture and Codec playback service. The
+		first-stage recognizer detects speech activity but does not verify the
+		spoken command semantics; the interface labels this limitation.
+
+if ROUTINE_MANAGER_VOICE
+
+config ROUTINE_MANAGER_VOICE_PRIORITY
+	int "Voice worker priority"
+	default 90
+
+config ROUTINE_MANAGER_VOICE_STACKSIZE
+	int "Voice worker stack size"
+	default 32768
+
+config ROUTINE_MANAGER_VOICE_CAPTURE_DEVICE
+	string "DMIC capture device"
+	default "/dev/audio/pcm1c"
+
+config ROUTINE_MANAGER_VOICE_PLAYBACK_DEVICE
+	string "Codec playback device"
+	default "/dev/audio/pcm0p"
+
+config ROUTINE_MANAGER_VOICE_RECORD_MS
+	int "Maximum recording time in milliseconds"
+	range 1000 10000
+	default 3500
+
+config ROUTINE_MANAGER_VOICE_VOLUME
+	int "Playback volume percentage"
+	range 1 100
+	default 100
+
+config ROUTINE_MANAGER_VOICE_ASSET_DIR
+	string "Voice prompt asset directory"
+	default "/etc/routine_voice"
+
+config ROUTINE_MANAGER_KWS
+	bool "Offline INT8 wake and environment-query recognition"
+	default n
+	depends on TFLITEMICRO
+	---help---
+		Run the accepted seven-class TensorFlow Lite Micro model after DMIC
+		capture. It recognizes the Chinese wake phrase and four environment
+		queries; unrelated speech and background are rejected. The current
+		model is a one-speaker personal prototype.
+
+config ROUTINE_MANAGER_KWS_CAPTURE
+	bool "R528 DMIC keyword corpus capture mode"
+	default y
+	depends on SYSTEM_NXRECORDER
+	---help---
+		Enable routine_mgr --kws-capture. This early-exit mode records labeled
+		16 kHz mono PCM samples under the FAT32 micro-SD mount without starting
+		LVGL, environment services, playback, or the demo recognizer.
+
+if ROUTINE_MANAGER_KWS_CAPTURE
+
+config ROUTINE_MANAGER_KWS_CAPTURE_ROOT
+	string "Keyword corpus storage root"
+	default "/sdcard/kws_corpus"
+	help
+		KWS samples are stored on the FAT32 micro-SD mount so the card can be
+		read directly by a host computer. Capture fails if the SD mount is not
+		ready; it never falls back to internal /data storage.
+
+config ROUTINE_MANAGER_KWS_STORAGE_MOUNT
+	string "Keyword corpus storage mount point"
+	default "/sdcard"
+	help
+		Mount point provided by the R528 Micro-TF automounter.
+
+config ROUTINE_MANAGER_KWS_DEVICE_ID
+	string "Anonymous board identifier for corpus files"
+	default "r528a"
+
+endif # ROUTINE_MANAGER_KWS_CAPTURE
+
+endif # ROUTINE_MANAGER_VOICE
+
+endif # CONTEST2026_113_ROUTINE_MANAGER

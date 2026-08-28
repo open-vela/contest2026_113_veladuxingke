@@ -1,0 +1,56 @@
+#
+# Contest 2026 team 113 LAN panel
+#
+
+menuconfig CONTEST2026_113_LAN_PANEL
+	bool "Contest 2026 team 113 LAN panel"
+	default n
+	depends on NET
+	depends on NET_TCP
+	depends on NETUTILS_NETLIB
+	---help---
+		Enable the bounded, concurrent LAN status and configuration panel.
+
+if CONTEST2026_113_LAN_PANEL
+
+config CONTEST2026_113_LAN_PANEL_PRIORITY
+	int "LAN panel task priority"
+	default 100
+
+config CONTEST2026_113_LAN_PANEL_STACKSIZE
+	int "LAN panel task stack size"
+	default 32768
+
+config CONTEST2026_113_LAN_PANEL_PORT
+	int "LAN panel TCP port"
+	range 1 65535
+	default 8080
+
+config CONTEST2026_113_LAN_PANEL_TIMEOUT_SEC
+	int "LAN panel socket timeout"
+	range 1 60
+	default 5
+
+config CONTEST2026_113_LAN_PANEL_MAX_REQUEST
+	int "LAN panel maximum request bytes"
+	range 512 8192
+	default 4096
+
+config CONTEST2026_113_LAN_PANEL_KWS_EXPORT
+	bool "Read-only KWS corpus export"
+	default y
+	depends on FS_FAT
+	depends on CONTEST2026_113_ROUTINE_MANAGER
+	---help---
+		Expose authenticated, exact-path PCM/JSON downloads from the SD corpus.
+		The panel never exposes a general filesystem path.
+
+config CONTEST2026_113_LAN_PANEL_KWS_ROOT
+	string "KWS corpus root"
+	default "/sdcard/kws_corpus"
+
+config CONTEST2026_113_LAN_PANEL_AUTH_PATH
+	string "Panel bearer token path"
+	default "/data/panel.auth"
+
+endif # CONTEST2026_113_LAN_PANEL

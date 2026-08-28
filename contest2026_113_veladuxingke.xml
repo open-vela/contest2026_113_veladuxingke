@@ -9,8 +9,9 @@
   <include name="openvela.xml"/>
 
   <project path="contest2026_113_veladuxingke" name="contest2026_113_veladuxingke">
-    <linkfile src="app/hello_app" dest="packages/demos/contest2026_113_hello_app"/>
-    <linkfile src="quickapp/hello_quickapp" dest="packages/apps/contest2026_113_hello_quickapp"/>
-    <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_113_board"/>
+    <linkfile src="app/routine_manager" dest="packages/demos/contest2026_113_routine_manager"/>
+    <linkfile src="app/st7796_test" dest="packages/demos/contest2026_113_st7796_test"/>
+    <linkfile src="app/wifi_manager" dest="packages/demos/contest2026_113_wifi_manager"/>
+    <linkfile src="app/lan_panel" dest="packages/demos/contest2026_113_lan_panel"/>
   </project>
 </manifest>

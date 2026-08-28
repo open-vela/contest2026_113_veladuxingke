@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "audio": {
+    "encoding": "pcm_s16le",
+    "sample_rate_hz": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "default_record_ms": 3500,
+    "duration_tolerance_ms": 1000,
+    "maximum_bytes": 640000
+  },
+  "id": {
+    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$",
+    "sample_pattern": "^k(?P<context_hash>[0-9a-f]{16})_(?P<label_code>qt|qh|ql|qa|us|bg|wv)_(?P<take>[0-9]{4})$",
+    "label_codes": {
+      "query_temperature": "qt",
+      "query_humidity": "qh",
+      "query_light": "ql",
+      "query_air_quality": "qa",
+      "unknown_speech": "us",
+      "background": "bg",
+      "wake_nihao_vela": "wv"
+    }
+  },
+  "labels": {
+    "query_temperature": {
+      "training_class": "target",
+      "phrases": ["现在温度多少", "现在温度是多少", "当前温度是多少"]
+    },
+    "query_humidity": {
+      "training_class": "unknown",
+      "phrases": ["现在湿度多少", "现在湿度是多少", "当前湿度多少", "当前湿度是多少"]
+    },
+    "query_light": {
+      "training_class": "unknown",
+      "phrases": ["现在光照多少", "现在光照是多少", "当前光照是多少"]
+    },
+    "query_air_quality": {
+      "training_class": "unknown",
+      "phrases": ["现在空气质量怎么样", "当前空气质量怎么样", "二氧化碳浓度多少"]
+    },
+    "unknown_speech": {
+      "training_class": "unknown",
+      "phrases": []
+    },
+    "background": {
+      "training_class": "background",
+      "phrases": []
+    },
+    "wake_nihao_vela": {
+      "training_class": "wake",
+      "phrases": ["你好Vela", "你好 Vela"]
+    }
+  },
+  "activity": {
+    "frame_samples": 320,
+    "minimum_rms": 350,
+    "minimum_peak": 900
+  },
+  "quality": {
+    "minimum_positive_active_ratio": 0.04,
+    "maximum_clipped_ratio": 0.001
+  }
+}
