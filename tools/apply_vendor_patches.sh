@@ -7,16 +7,19 @@ contest_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
 workspace=$(CDPATH= cd -- "$contest_dir/.." && pwd)
 vendor_dir="$workspace/vendor/allwinnertech"
 apps_dir="$workspace/apps"
+ai_agent_dir="$workspace/packages/ai_agent"
 legacy_patch="$contest_dir/patches/vendor_allwinnertech/r528-dshanpi-ili9341-display.patch"
 twi3_patch="$contest_dir/patches/vendor_allwinnertech/r528-twi3-frequency-errors.patch"
 dmic_patch="$contest_dir/patches/vendor_allwinnertech/r528-dshanpi-dmic-pins.patch"
 led2_patch="$contest_dir/patches/vendor_allwinnertech/r528-dshanpi-led2-default-off.patch"
+ai_agent_partition_patch="$contest_dir/patches/vendor_allwinnertech/r528-dshanpi-ai-agent-partition.patch"
 audio_patch="$contest_dir/patches/vendor_allwinnertech/r528-audio-enable-and-test.patch"
 playback_lifecycle_patch="$contest_dir/patches/vendor_allwinnertech/r528-playback-lifecycle.patch"
 codec_playback_patch="$contest_dir/patches/vendor_allwinnertech/r528-dshanpi-codec-playback.patch"
 nxplayer_patch="$contest_dir/patches/apps/nxplayer-lifecycle.patch"
 nuttx_dir="$workspace/nuttx"
 ft5x06_patch="$contest_dir/patches/nuttx/ft5x06-lvgl-compat.patch"
+ai_agent_patch="$contest_dir/patches/packages_ai_agent/vela-desk-runtime.patch"
 
 # The custom R528 board delegates late initialization to the vendor chip tree.
 # Verify the Micro-TF source chain before enabling KWS capture on /sdcard.
@@ -41,6 +44,22 @@ if ! grep -q 'CONFIG_MICRO_TF' "$vendor_dir/chips/r528/r528_boot.c" ||
 fi
 printf '%s\\n' 'Verified vendor Micro-TF source integration.'
 
+if [[ ! -d "$ai_agent_dir/.git" ]]; then
+  printf 'Missing ai_agent project: %s\n' "$ai_agent_dir" >&2
+  exit 1
+fi
+
+if git -C "$ai_agent_dir" apply --reverse --check "$ai_agent_patch" 2>/dev/null; then
+  printf '%s\n' "Vela desktop AI Agent runtime patch is already applied."
+elif git -C "$ai_agent_dir" apply --check "$ai_agent_patch"; then
+  git -C "$ai_agent_dir" apply "$ai_agent_patch"
+  printf '%s\n' "Applied Vela desktop AI Agent runtime patch."
+else
+  printf '%s\n' \
+    "Vela desktop AI Agent patch does not apply cleanly; inspect packages/ai_agent." >&2
+  exit 1
+fi
+
 if git -C "$apps_dir" apply --reverse --check "$nxplayer_patch" 2>/dev/null; then
   printf '%s\n' "NxPlayer lifecycle patch is already applied."
 elif git -C "$apps_dir" apply --check "$nxplayer_patch"; then
@@ -58,6 +77,17 @@ elif git -C "$nuttx_dir" apply --check "$ft5x06_patch"; then
   printf '%s\n' "Applied FT5x06 LVGL compatibility patch."
 else
   printf '%s\n' "FT5x06 patch does not apply cleanly; inspect the NuttX tree." >&2
+  exit 1
+fi
+
+if git -C "$vendor_dir" apply --reverse --check "$ai_agent_partition_patch" 2>/dev/null; then
+  printf '%s\n' "AI Agent NAND partition-size patch is already applied."
+elif git -C "$vendor_dir" apply --check "$ai_agent_partition_patch"; then
+  git -C "$vendor_dir" apply "$ai_agent_partition_patch"
+  printf '%s\n' "Applied AI Agent NAND partition-size patch."
+else
+  printf '%s\n' \
+    "AI Agent NAND partition-size patch does not apply cleanly; inspect vendor/allwinnertech." >&2
   exit 1
 fi
 

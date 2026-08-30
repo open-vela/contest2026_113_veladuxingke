@@ -1,0 +1,20 @@
+diff --git a/lichee/board/r528s3/dshanpi_nand/configs/sys_partition.fex b/lichee/board/r528s3/dshanpi_nand/configs/sys_partition.fex
+index 738f7c4e..2fa33463 100644
+--- a/lichee/board/r528s3/dshanpi_nand/configs/sys_partition.fex
++++ b/lichee/board/r528s3/dshanpi_nand/configs/sys_partition.fex
+@@ -72,6 +72,6 @@ size = 256
+ 
+ [partition]
+      name         = bootloader
+-     size         = 20480
++     size         = 24576
+      user_type    = 0x8000
+ 	 downloadfile = "nsh.fex"
+@@ -96,6 +96,6 @@ size = 256
+ 
+ [partition]
+     name         = usrdata
+-    size         = 155136
++    size         = 151040
+     downloadfile = "usrdata.fex"
+     user_type    = 0x8000

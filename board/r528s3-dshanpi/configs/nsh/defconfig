@@ -5,6 +5,11 @@
 # You can then do "make savedefconfig" to generate a new defconfig file that includes your
 # modifications.
 #
+# CONFIG_AI_AGENT_FEISHU is not set
+# CONFIG_AI_AGENT_MCP is not set
+# CONFIG_AI_AGENT_MQTT is not set
+# CONFIG_AI_AGENT_NODE is not set
+# CONFIG_AI_AGENT_WEIXIN is not set
 # CONFIG_BINFMT_DISABLE is not set
 # CONFIG_DEBUG_ERROR is not set
 # CONFIG_DISABLE_ENVIRON is not set
@@ -203,6 +208,8 @@ CONFIG_ELF=y
 CONFIG_ETC_ROMFS=y
 CONFIG_EXAMPLES_ADC=y
 CONFIG_EXAMPLES_ADC_DEVPATH="/dev/input/event1"
+CONFIG_EXAMPLES_AI_AGENT_VELA=y
+CONFIG_EXAMPLES_AI_AGENT_VELA_DATA_DIR="/data/agent"
 CONFIG_EXAMPLES_FB=y
 CONFIG_EXAMPLES_FB_STACKSIZE=8192
 CONFIG_EXAMPLES_GPIO=y
