@@ -2,7 +2,7 @@
 
 ## 一、作品简介
 
-Vela 智能桌面管家是一套基于 openvela 和百问网 R528S3-DshanPi 的离线智能桌面终端。它通过 SHT40、BH1750 和 SGP30 采集温度、湿度、光照、eCO₂ 与 TVOC，在 480×320 触摸屏上实时展示，并提供离线固定指令识别、中文语音播报、高低温告警、今日日程提醒、智能照明和局域网管理。
+Vela 智能桌面管家是一套基于 openvela 和百问网 R528S3-DshanPi 的离线智能桌面终端。它通过 SHT40、BH1750 和 SGP30 采集温度、湿度、光照、eCO₂ 与 TVOC，在 480×320 触摸屏上实时展示，并提供离线固定指令识别、中文语音播报、高低温告警、今日日程提醒、智能照明和局域网管理。联网后，设备上的 AI Agent 还能通过 Markdown Skill 查询桌面环境和未完成提醒，并直接修改三条每日 routine 模板。
 
 主要特点：
 
@@ -28,10 +28,13 @@ Vela 智能桌面管家是一套基于 openvela 和百问网 R528S3-DshanPi 的�
 - `app/lan_panel/` — 设备端低资源 HTTP 服务和内置网页，用于环境数据、曲线、历史、日程、温度阈值、智能照明和 SD 导出管理。
 - `app/st7796_test/` — ST7796U2 屏幕色块、方向和帧缓冲调试程序。
 - `board/r528s3-dshanpi/` — R528S3-DshanPi 板级配置、ST7796U2/FT5x06 初始化、启动脚本、中文字体和语音 PCM 资源。
+- [`packages/ai_agent/`](packages/ai_agent/) — 本次提交使用的 Vela AI Agent 运行时源码快照，提供 CLI/WebSocket 对话、MiMo 路由和 `vela-desk` 环境/日程 Skill；R528 最终固件通过 `tools/apply_vendor_patches.sh` 集成并启用。
+- [`packages/ai_agent/agent_skills/vela-desk.md`](packages/ai_agent/agent_skills/vela-desk.md) — 本项目自定义 Markdown Skill 源文件，固件启动后按版本安装到设备 `/data/agent/skills/vela-desk.md`。
 - `patches/` — 对 NuttX、NxPlayer 和 Allwinner R528 音频、DMIC、TWI3 及 GPIO 的可复现补丁。
 - `source_assets/routine_voice/` — 中文语音 WAV 母版及生成元数据；API Key 不在仓库中。
 - `tools/` — 补丁应用、语音资源处理、KWS 语料导入/训练/模型转换与主机端合同测试工具。
-- `docs/` — 硬件接线、编译、触摸、显示、传感器、音频、语音和网络的开发与验收记录；另有 [`快速上手与自定义语音模型`](docs/快速上手与自定义语音模型.md) 供首次使用者和自定义说话人模型使用。
+- `docs/` — 硬件接线、编译、触摸、显示、传感器、音频、语音、网络和 ai_agent 的开发与验收记录；另有 [`快速上手与自定义语音模型`](docs/快速上手与自定义语音模型.md) 供首次使用者和自定义说话人模型使用。
+- `port/gd32-rtthread/` — GD32 + RT-Thread 移植资料，当前仅覆盖环境传感器采集、LVGL 显示/触摸和 microSD 历史导出，不包含语音、Wi-Fi 或网页功能。
 - `logs/` — 按日期归档的完整 AI Coding 对话日志及清单。
 - `contest2026_113_veladuxingke.xml` — 参赛仓库 manifest 和应用映射配置。
 
@@ -167,14 +170,31 @@ pack finish
    /sdcard/routine_history/routine-history-<epoch>.jsonl
    ```
 
+7. 验证 AI Agent 的设备控制 Skill。先让设备联网并在 NSH 启动 `ai_agent`，然后在 `vela>` 中执行：
+
+   ```text
+   vela> set_llm mimo <MIMO_API_KEY>
+   vela> ask 读取当前桌面环境，并告诉我今天未完成的提醒
+   vela> ask 把喝水改到15:30，事项改成休息
+   ```
+
+   第一条请求应按照 `vela-desk.md` 读取 `/data/routine/status.json`，返回带有效性标签的传感器值和未完成日程。第二条请求应先读取同一状态文件，再调用 `routine_schedule_update`；修改写入 `/data/routine/config.json` 后，`routine_mgr` 下一次刷新会把新时间和文本作为每天模板应用到屏幕和状态文件。该工具只允许修改 ID `0`、`1`、`2` 的现有事项，不新增或删除日程。Agent 在线音乐搜索/播放能力已移除；日程到期的本地语音播报仍由 `routine_mgr` 与 NxPlayer 音频链路完成。
+
 如烧录新版本后浏览器仍显示旧页面，请清理该设备地址的缓存，或用无痕窗口重新打开。
 
 ### 8. 提交前验证范围
 
-- 主机端合同测试：177 项通过，6 项按环境条件跳过。测试依赖位于仓库外的
-  `/tmp/r528-kws-site`，不会被打包进提交内容。
+- 主机端合同测试：完整套件 196 项运行，190 项通过、6 项按环境条件跳过；在
+  `PYTHONPATH=/tmp/r528-kws-site` 提供 `numpy` 后执行
+  `python3 -m unittest discover -s tools -p 'test_*.py'`，结果为 `OK`。临时依赖
+  位于仓库外，不会被打包进提交内容。`ai_agent` 专项合同测试为 19/19；Agent、
+  音频生命周期和启动时间三组合计 33/33。
+- 最终候选 `nuttx.bin` 为 10,605,288 字节，SHA-256
+  `8a27c63a03793ca2a12d5595e84601d1c6bea54b95fc6cf255986f45ecfeb76b`；NAND
+  镜像为 26,739,712 字节，SHA-256
+  `9a2b672e402e5ce2a7c30228c74453dcd7acf422f076b021b5b1cd3890cb8b06`。
 - `contest2026_113_veladuxingke.xml` 可解析，manifest 中列出的日志路径均已核对存在，JSONL 日志和 manifest 均可解析。
-- 本轮提交整理未重新执行完整 NuttX 编译、NAND 打包或烧录；`docs/` 和 `logs/` 中的构建、烧录及真机结果是开发期间的历史记录，不等同于本轮重新验收。
+- 本轮已重新执行 NuttX 增量编译和 NAND 打包；本机未连接目标板，因此 `ai_agent` 镜像的 PhoenixSuit 烧录、联网 LLM 对话和 Skill 输出仍待硬件实测，详见 [`ai_agent 硬件验收记录`](docs/ai_agent硬件验收记录.md)。
 
 ## 五、AI Coding 使用说明
 

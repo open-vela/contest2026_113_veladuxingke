@@ -24,6 +24,18 @@ pin from PB18 to PD18, matching the schematic and R528 mux table.
 latch HIGH before PD22 is switched to output mode. This prevents USER_LED2
 from remaining lit between RTOS GPIO initialization and `lan_panel` startup.
 
+`r528-dshanpi-ai-agent-partition.patch` grows the DshanPi `bootloader` NAND
+partition from 10 MiB to 12 MiB and reduces `usrdata` by the same 2 MiB. The
+total partition allocation is unchanged; the extra firmware headroom is needed
+for the linked `ai_agent` runtime while keeping persistent storage available.
+
+The same script applies `patches/packages_ai_agent/vela-desk-runtime.patch` to
+the separately managed `packages/ai_agent` project. It makes MQTT-C optional,
+supports builds without `CONFIG_SYSTEM_POPEN`, installs the `vela-desk`
+Markdown Skill at first startup, removes a retired
+`music-dj.md` from persistent upgrades, grants read-only routine status access,
+and registers the atomic `routine_schedule_update` daily-template tool.
+
 `r528-audio-enable-and-test.patch` links the shared tiny-ALSA helpers required
 by `sunxi_alsa.c` and makes `audio_test` default to `/dev/audio/pcm1c` capture
 and `/dev/audio/pcm0p` playback while allowing explicit device overrides.
