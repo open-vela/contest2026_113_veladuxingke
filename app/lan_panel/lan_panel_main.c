@@ -32,6 +32,7 @@
 #include "lan_auth.h"
 #include "lan_http.h"
 #include "wifi_config.h"
+#include "voice_config_api.h"
 
 #ifndef CONFIG_CONTEST2026_113_LAN_PANEL_PORT
 #  define CONFIG_CONTEST2026_113_LAN_PANEL_PORT 8080
@@ -1163,6 +1164,7 @@ static int lan_panel_handle(int fd, const char *token)
         "<div class=page-tools>"
         "<button id=refreshNow type=button onclick='refreshStatus()'>&#8635; 立即刷新</button>"
         "<button id=curveOpen type=button onclick='openCurve()'>📈 运行曲线</button>"
+        "<button id=voiceOpen type=button onclick='openVoiceConfig()'>🎤 语音配置</button>"
         "<label>自动刷新<select id=refreshInterval onchange='setRefreshInterval(this.value)' aria-label='自动刷新周期'>"
         "<option value=0>关闭</option><option value=2>2 秒</option><option value=5>5 秒</option>"
         "<option value=10 selected>10 秒</option><option value=30>30 秒</option><option value=60>60 秒</option>"
@@ -1222,6 +1224,47 @@ static int lan_panel_handle(int fd, const char *token)
         "<button type=button onclick='closeCurve()'>关闭</button></div>"
         "<div id=curveResult></div><h3 class=curve-points-title>曲线点数据（每个点的实际数值）</h3>"
         "<div id=curvePoints class=data-table-wrap><div class=empty-data>暂无曲线数据</div></div></div></div>"
+        "<div id=voiceModal class=modal role=dialog aria-modal=true aria-labelledby=voiceTitle>"
+        "<div class=modal-card><h2 id=voiceTitle>🎤 语音配置</h2>"
+        "<div class=card style='box-shadow:none;margin:0'>"
+        "<label style='font-weight:600;margin-bottom:8px;display:block'>语音模式</label>"
+        "<label style='display:inline-flex;align-items:center;margin-right:16px'>"
+        "<input type=radio name=voiceMode value=offline id=voiceModeOffline checked>"
+        "<span style='margin-left:6px'>🔒 离线模式（固定指令）</span></label>"
+        "<label style='display:inline-flex;align-items:center'>"
+        "<input type=radio name=voiceMode value=online id=voiceModeOnline>"
+        "<span style='margin-left:6px'>🌐 在线模式（智能对话）</span></label>"
+        "<div id=mimoConfig style='margin-top:16px;padding:16px;background:#f8f9fa;border-radius:8px'>"
+        "<label style='display:flex;align-items:center;margin-bottom:12px'>"
+        "<input type=checkbox id=mimoEnabled style='width:auto;margin:0 8px 0 0'>"
+        "<span style='font-weight:600'>启用 MiMo</span>"
+        "<span id=mimoStatus style='margin-left:8px;padding:2px 8px;border-radius:12px;font-size:12px;background:#ddd;color:#666'>未配置</span></label>"
+        "<div id=mimoFields><label>MiMo API Key</label>"
+        "<input type=password id=mimoApiKey placeholder='sk-xxxxx 或 tp-xxxxx'>"
+        "<small id=apiKeyStatus style='color:#666;font-size:12px'></small>"
+        "<label>模型</label><select id=mimoModel>"
+        "<option value='mimo-v2.6-pro'>mimo-v2.6-pro (推荐)</option></select>"
+        "<label>TTS 音色</label><select id=mimoTtsVoice>"
+        "<optgroup label='中文音色（推荐）'>"
+        "<option value='冰糖'>冰糖 - 女性 (默认)</option>"
+        "<option value='茉莉'>茉莉 - 女性</option>"
+        "<option value='苏打'>苏打 - 男性</option>"
+        "<option value='白桦'>白桦 - 男性</option>"
+        "</optgroup>"
+        "<optgroup label='英文音色'>"
+        "<option value='Mia'>Mia - 女性</option>"
+        "<option value='Chloe'>Chloe - 女性</option>"
+        "<option value='Milo'>Milo - 男性</option>"
+        "<option value='Dean'>Dean - 男性</option>"
+        "</optgroup></select></div></div>"
+        "<div style='background:#e3f2fd;padding:12px;border-radius:8px;margin-top:16px;font-size:14px'>"
+        "<strong>💡 使用说明：</strong><br>"
+        "• 在线模式：先说 <strong>\"你好，openvela\"</strong> 唤醒，然后提问<br>"
+        "• 离线模式：直接说固定指令（温度、湿度、光照、空气质量）</div></div>"
+        "<div style='display:flex;gap:12px;margin-top:16px'>"
+        "<button type=button onclick='saveVoiceConfig()' style='flex:1'>💾 保存配置</button>"
+        "<button type=button onclick='closeVoiceConfig()' style='flex:1;background:#6c757d'>关闭</button></div>"
+        "<div id=voiceResult style='margin-top:12px'></div></div></div>"
         "<script>function el(i){return document.getElementById(i)}"
         "function tok(){return sessionStorage.token||''}"
         "function hdr(){return{'Authorization':'Bearer '+tok()}}"
@@ -1323,6 +1366,34 @@ static int lan_panel_handle(int fd, const char *token)
         "meta.textContent=historyRows.length?'已加载 '+historyRows.length+' 条：'+historyStamp(historyRows[0])+' — '+historyStamp(historyRows[historyRows.length-1]):'暂无历史数据'}).catch(e=>{meta.textContent='曲线加载失败: '+e.message;drawCurve([]);renderDataTable([],'curvePoints')})}"
         "function openCurve(){el('curveModal').classList.add('open');loadRoutine();loadCurveHistory()}"
         "function closeCurve(){el('curveModal').classList.remove('open');hideCurveTooltip()}"
+        "function openVoiceConfig(){el('voiceModal').classList.add('open');loadVoiceConfig()}"
+        "function closeVoiceConfig(){el('voiceModal').classList.remove('open')}"
+        "function loadVoiceConfig(){if(!tok())return;"
+        "get('/api/v1/voice/config').then(r=>r.json()).then(d=>{"
+        "el(d.voice_mode==='online'?'voiceModeOnline':'voiceModeOffline').checked=true;"
+        "el('mimoEnabled').checked=d.mimo_enabled||false;"
+        "el('mimoModel').value=d.mimo_model||'mimo-v2.6-pro';"
+        "el('mimoTtsVoice').value=d.mimo_tts_voice||'冰糖';"
+        "el('mimoStatus').textContent=d.has_api_key?'已配置':'未配置';"
+        "el('mimoStatus').style.background=d.has_api_key?'#d4edda':'#f8d7da';"
+        "el('mimoStatus').style.color=d.has_api_key?'#155724':'#721c24';"
+        "if(d.has_api_key)el('apiKeyStatus').textContent='✓ API Key 已配置';updateMimoFields()}).catch(e=>{"
+        "showStatus('voiceResult','加载配置失败: '+e.message,false)})}"
+        "function updateMimoFields(){const enabled=el('mimoEnabled').checked;"
+        "el('mimoFields').style.opacity=enabled?'1':'0.5';"
+        "el('mimoFields').style.pointerEvents=enabled?'auto':'none'}"
+        "function saveVoiceConfig(){if(!tok()){showStatus('voiceResult','缺少令牌',false);return}"
+        "const mode=el('voiceModeOnline').checked?'online':'offline';"
+        "const cfg={voice_mode:mode,mimo_enabled:el('mimoEnabled').checked,"
+        "mimo_model:el('mimoModel').value,mimo_tts_voice:el('mimoTtsVoice').value};"
+        "const key=el('mimoApiKey').value;if(key)cfg.mimo_api_key=key;"
+        "configPost('/api/v1/voice/config',JSON.stringify(cfg)).then(r=>{"
+        "if(r.status===401){sessionStorage.removeItem('token');throw new Error('令牌无效')}"
+        "return r.json()}).then(d=>{"
+        "showStatus('voiceResult','✓ 配置已保存，重启 routine_mgr 生效',true);"
+        "setTimeout(()=>loadVoiceConfig(),1000)}).catch(e=>{"
+        "showStatus('voiceResult','保存失败: '+e.message,false)})}"
+        "el('mimoEnabled').addEventListener('change',updateMimoFields);"
         "function exportHistory(){if(!tok())return;if(!confirm('确认将全部历史数据导出到SD卡吗？'))return;"
         "fetch('/api/v1/history/export',{method:'POST',cache:'no-store',headers:hdr()})"
         ".then(r=>r.text().then(t=>{let d={};try{d=JSON.parse(t)}catch(e){}if(r.status===401){sessionStorage.removeItem('token');throw new Error('令牌无效')}if(!r.ok)throw new Error(r.status===503?'未检测到SD卡':r.status===409?'暂无历史数据':'HTTP '+r.status);return d}))"
@@ -1354,7 +1425,10 @@ static int lan_panel_handle(int fd, const char *token)
         "if(!tok()&&!ask()){document.body.innerHTML='<h1 style=color:#fff;text-align:center;padding:50px>需要令牌</h1>'}else{"
         "const saved=localStorage.getItem('refreshSeconds');"
         "if(saved&&refreshValues.includes(saved))el('refreshInterval').value=saved;"
-        "refreshStatus();loadRoutine()}</script>";
+        "refreshStatus();loadRoutine();"
+        "window.addEventListener('click',e=>{"
+        "if(e.target.id==='curveModal')closeCurve();"
+        "if(e.target.id==='voiceModal')closeVoiceConfig()})}</script>";
       return lan_http_send_response(fd, 200, "text/html", page, sizeof(page) - 1);
     }
 
@@ -1405,6 +1479,19 @@ static int lan_panel_handle(int fd, const char *token)
   if (strcmp(request.path, "/api/v1/wifi/status") == 0)
     {
       return lan_http_send_file(fd, LAN_PANEL_WIFI_STATUS, "application/json");
+    }
+
+  /* 语音配置 API */
+  if (strcmp(request.path, "/api/v1/voice/config") == 0)
+    {
+      if (strcmp(request.method, "GET") == 0 || strcmp(request.method, "HEAD") == 0)
+        {
+          return voice_config_api_get(fd);
+        }
+      else if (strcmp(request.method, "POST") == 0)
+        {
+          return voice_config_api_post(fd, request.body, request.body_length);
+        }
     }
 
   if (strcmp(request.path, "/api/v1/routine/config") == 0 &&

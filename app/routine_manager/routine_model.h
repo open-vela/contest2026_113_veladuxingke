@@ -27,6 +27,9 @@
 #define ROUTINE_HISTORY_INTERVAL_MIN_SECONDS 5
 #define ROUTINE_HISTORY_INTERVAL_MAX_SECONDS 3600
 #define ROUTINE_DEFAULT_HISTORY_INTERVAL_SECONDS 60
+#define ROUTINE_MIMO_API_KEY_MAX 128
+#define ROUTINE_MIMO_MODEL_MAX 64
+#define ROUTINE_MIMO_VOICE_MAX 32
 
 #define ROUTINE_SCHEDULE_ID_DRINK 0
 #define ROUTINE_SCHEDULE_ID_FOCUS 1
@@ -39,6 +42,12 @@ enum routine_text_id_e
   ROUTINE_TEXT_DRINK = 0,
   ROUTINE_TEXT_FOCUS,
   ROUTINE_TEXT_VENTILATE
+};
+
+enum routine_voice_mode_e
+{
+  ROUTINE_VOICE_MODE_OFFLINE = 0,  /* 离线 KWS 固定指令 */
+  ROUTINE_VOICE_MODE_ONLINE        /* 在线 MiMo 智能对话 */
 };
 
 enum routine_clock_mode_e
@@ -78,6 +87,11 @@ struct routine_settings_s
   int32_t temperature_high_x100;
   uint32_t history_interval_seconds;
   struct routine_schedule_setting_s schedule[ROUTINE_SCHEDULE_MAX];
+  enum routine_voice_mode_e voice_mode;
+  char mimo_api_key[ROUTINE_MIMO_API_KEY_MAX];
+  char mimo_model[ROUTINE_MIMO_MODEL_MAX];
+  char mimo_tts_voice[ROUTINE_MIMO_VOICE_MAX];
+  bool mimo_enabled;
 };
 
 struct routine_schedule_item_s

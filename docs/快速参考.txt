@@ -1,0 +1,131 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    语音小智 - 快速参考卡
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【项目状态】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ 代码完成    - VAD + MIMO 2.6 在线唤醒
+✅ UI 完成     - 在线/离线切换 + 状态显示
+✅ 文档完成    - 使用手册 + API 验证指南
+⚠️  API 未验证  - 需要先在 PC 上测试 MIMO API
+
+【核心创新】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 完全不需要 KWS 模型训练
+🎯 使用小米 MIMO 云端大模型
+🎯 屏幕可视化实时状态
+🎯 一键切换在线/离线模式
+
+【下一步行动】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 获取 MIMO API Key
+   → https://mimo.mi.com
+
+2. PC 端测试 API
+   → cd tools
+   → ./test_mimo_api.sh tp-your-key
+
+3. 根据测试结果调整代码
+   → 参考: docs/MIMO_API验证指南.md
+   → 参考: docs/MIMO_API注意事项.md
+
+4. 确认关键问题
+   → □ Chat 响应格式 (嵌套 vs 平铺)
+   → □ ASR 音频格式 (PCM vs WAV)
+   → □ TTS 输出正常
+   → □ 模型版本号正确
+
+5. 编译和烧录
+   → ./tools/build_voice_wakeup.sh
+   → 烧录镜像到板子
+
+6. 真机测试
+   → 配置 API Key
+   → 点击 "离线" → "在线"
+   → 说 "你好Vela，现在温度多少？"
+
+【关键文件】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+核心代码:
+  app/routine_manager/vad_detector.c          - VAD 检测
+  app/routine_manager/voice_wakeup_service.c  - 唤醒服务
+  app/routine_manager/mimo_integration.c      - MIMO API
+  app/routine_manager/routine_ui.c            - UI 界面
+
+文档:
+  docs/语音小智_MIMO在线唤醒.md              - 完整手册
+  docs/开发总结_语音小智.md                  - 开发总结
+  docs/MIMO_API验证指南.md                   - API 验证
+  docs/MIMO_API注意事项.md                   - 注意事项
+
+工具:
+  tools/test_mimo_api.sh                     - API 测试
+  tools/build_voice_wakeup.sh                - 快速编译
+  tools/voice_config_example.json            - 配置示例
+
+【潜在问题】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔴 音频格式
+   当前: raw PCM
+   可能需要: WAV 格式 (添加 44 字节头)
+   修复: voice_wakeup_service.c::save_audio_file()
+
+🟡 Chat 响应解析
+   当前: 直接查找 "content"
+   可能需要: choices[0].message.content
+   修复: mimo_integration.c::mimo_llm_chat()
+
+🟡 模型版本
+   当前: mimo-v2.6
+   需确认: 是否为正确的模型名称
+   修复: mimo_integration.c::mimo_service_init()
+
+【快速命令】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# PC 测试
+./tools/test_mimo_api.sh tp-your-key
+
+# 编译
+./tools/build_voice_wakeup.sh
+
+# 板上调试
+dmesg | grep -i "vad\|wakeup\|mimo"
+ls -lh /data/voice_wakeup/
+cat /data/mimo_tmp/llm_result.txt
+
+【成功标准】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PC 测试:
+  ✓ Chat API 返回正常
+  ✓ ASR API 识别成功
+  ✓ TTS API 生成音频
+
+真机测试:
+  ✓ VAD 检测到人声
+  ✓ 录音文件生成
+  ✓ MIMO ASR 识别 "你好Vela"
+  ✓ MIMO LLM 生成回复
+  ✓ MIMO TTS 播放语音
+  ✓ 状态显示正常
+
+【紧急联系】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+如果遇到问题:
+  1. 先查看 docs/MIMO_API注意事项.md
+  2. 使用 test_mimo_api.sh 诊断
+  3. 回到 PC 调试，不要在板上盲试
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  重要提醒:
+
+先在 PC 上验证 MIMO API，确认格式正确后再烧录！
+板上调试 API 问题效率很低，浪费时间！
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

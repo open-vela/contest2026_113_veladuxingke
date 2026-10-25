@@ -82,13 +82,16 @@ const char* llm_normalize_model_for_host(const char* host,
     if (!model || !is_mimo_host(host))
         return model;
 
+    /* Map legacy v2.x model names to v2.6 */
     if (strcmp(model, "mimo-v2-flash") == 0
-        || strcmp(model, "mimo-v2-omni") == 0)
-        return AGENT_LLM_MIMO_MODEL;
-    if (strcmp(model, "mimo-v2-pro") == 0)
-        return "mimo-v2.5-pro";
+        || strcmp(model, "mimo-v2-omni") == 0
+        || strcmp(model, "mimo-v2.5") == 0)
+        return AGENT_LLM_MIMO_MODEL;  /* mimo-v2.6-pro */
+    if (strcmp(model, "mimo-v2-pro") == 0
+        || strcmp(model, "mimo-v2.5-pro") == 0)
+        return "mimo-v2.6-pro";
     if (strcmp(model, "mimo-v2-tts") == 0)
-        return "mimo-v2.5-tts";
+        return "mimo-v2.5-tts";  /* TTS still uses v2.5 */
     return model;
 }
 

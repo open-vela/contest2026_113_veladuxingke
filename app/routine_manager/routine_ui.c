@@ -15,6 +15,7 @@
 
 #include "routine_ui.h"
 #include "routine_ui_layout.h"
+#include "routine_config.h"
 #include "wifi_ui.h"
 #include "wifi_status_monitor.h"
 
@@ -68,6 +69,12 @@ struct routine_ui_text_s
   const char *detail_light;
   const char *status[5];
   const char *status_help[5];
+  const char *voice_mode_online;
+  const char *voice_mode_offline;
+  const char *voice_wakeup_listening;
+  const char *voice_wakeup_detected;
+  const char *voice_wakeup_recognizing;
+  const char *voice_wakeup_confirmed;
 };
 
 enum routine_sensor_state_e
@@ -110,6 +117,8 @@ struct routine_ui_context_s
   lv_obj_t *voice_status;
   lv_obj_t *voice_button;
   lv_obj_t *voice_button_label;
+  lv_obj_t *voice_mode_button;
+  lv_obj_t *voice_mode_label;
   lv_obj_t *voice_result;
   lv_obj_t *chart;
   lv_chart_series_t *temperature_series;
@@ -151,6 +160,7 @@ struct routine_ui_context_s
   bool schedule_dirty;
   bool snapshot_initialized;
   bool voice_active;
+  bool voice_online_mode;
   char time_buffer[8];
   char value_buffer[ROUTINE_SENSOR_CARD_COUNT][32];
   char subvalue_buffer[ROUTINE_SENSOR_CARD_COUNT][32];
@@ -213,6 +223,12 @@ static const struct routine_ui_text_s g_chinese_text =
     "SGP30 正在预热，暂无有效读数",
     "连接中断，等待自动恢复"
   },
+  .voice_mode_online = "在线",
+  .voice_mode_offline = "离线",
+  .voice_wakeup_listening = "监听中…",
+  .voice_wakeup_detected = "检测到人声",
+  .voice_wakeup_recognizing = "识别中 (ASR)",
+  .voice_wakeup_confirmed = "唤醒词确认",
 };
 
 static const struct routine_ui_text_s g_english_text =
@@ -258,6 +274,12 @@ static const struct routine_ui_text_s g_english_text =
     "SGP30 is warming up; no valid reading",
     "Connection lost; waiting for recovery"
   },
+  .voice_mode_online = "ONLINE",
+  .voice_mode_offline = "OFFLINE",
+  .voice_wakeup_listening = "LISTENING...",
+  .voice_wakeup_detected = "VOICE DETECTED",
+  .voice_wakeup_recognizing = "RECOGNIZING (ASR)",
+  .voice_wakeup_confirmed = "WAKEWORD CONFIRMED",
 };
 
 static struct routine_ui_context_s g_ui;
@@ -776,9 +798,19 @@ static void routine_sync_dialog_play_state(void)
             g_ui.voice_active ? g_ui.text->voice_busy :
             status == ROUTINE_SENSOR_OFFLINE ?
             g_ui.text->voice_errors[AUDIO_SERVICE_ERROR_SENSOR_UNAVAILABLE] :
-            g_ui.text->status_help[status]);
+            g_ui.text->voice_errors[AUDIO_SERVICE_ERROR_PLAYBACK]);
         }
     }
+}
+
+static void routine_voice_mode_error_timer_cb(lv_timer_t *timer)
+{
+  lv_obj_set_style_bg_color(g_ui.voice_mode_button, ROUTINE_COLOR_MUTED, 0);
+  if (g_ui.voice_status != NULL && !g_ui.voice_active)
+    {
+      lv_label_set_text_static(g_ui.voice_status, g_ui.text->voice_idle);
+    }
+  lv_timer_delete(timer);
 }
 
 static void routine_sensor_play_cb(lv_event_t *event)
@@ -1273,6 +1305,69 @@ static void routine_voice_button_cb(lv_event_t *event)
     }
 }
 
+static void routine_voice_mode_button_cb(lv_event_t *event)
+{
+  /* 检查网络状态 */
+  if (!g_ui.voice_online_mode)
+    {
+      /* 尝试切换到在线模式，检查是否有网络连接 */
+      if (!wifi_status_monitor_is_connected())
+        {
+          syslog(LOG_WARNING, "Cannot switch to online mode: No network connection\n");
+
+          /* 显示提示信息 */
+          if (g_ui.voice_status != NULL)
+            {
+              lv_label_set_text_static(g_ui.voice_status, "⚠ 需要联网才能使用在线模式");
+            }
+
+          /* 按钮闪烁红色提示 */
+          lv_obj_set_style_bg_color(g_ui.voice_mode_button, ROUTINE_COLOR_RED, 0);
+          lv_obj_invalidate(g_ui.voice_mode_button);
+
+          /* 1.5秒后恢复按钮颜色并清除提示 */
+          lv_timer_create(routine_voice_mode_error_timer_cb, 1500, NULL);
+
+          return;
+        }
+    }
+
+  /* 切换在线/离线模式 */
+  g_ui.voice_online_mode = !g_ui.voice_online_mode;
+
+  lv_label_set_text_static(g_ui.voice_mode_label,
+                          g_ui.voice_online_mode ?
+                          g_ui.text->voice_mode_online :
+                          g_ui.text->voice_mode_offline);
+
+  lv_obj_set_style_bg_color(g_ui.voice_mode_button,
+                            g_ui.voice_online_mode ?
+                            ROUTINE_COLOR_GREEN : ROUTINE_COLOR_MUTED, 0);
+
+  lv_obj_center(g_ui.voice_mode_label);
+
+  /* 更新状态显示 */
+  if (g_ui.voice_status != NULL)
+    {
+      lv_label_set_text_static(g_ui.voice_status,
+                              g_ui.voice_online_mode ?
+                              "✓ 在线模式已启用" : g_ui.text->voice_idle);
+    }
+
+  syslog(LOG_INFO, "Voice mode switched to: %s\n",
+         g_ui.voice_online_mode ? "ONLINE" : "OFFLINE");
+
+  /* 保存配置更改 */
+  struct routine_settings_s settings;
+  if (routine_config_load(&settings) == 0)
+    {
+      settings.voice_mode = g_ui.voice_online_mode ?
+                           ROUTINE_VOICE_MODE_ONLINE : ROUTINE_VOICE_MODE_OFFLINE;
+      routine_config_save(&settings);
+      syslog(LOG_INFO, "Voice mode configuration saved\n");
+    }
+}
+
 static void routine_create_sensor_page(lv_obj_t *parent)
 {
   lv_obj_t *voice;
@@ -1292,9 +1387,26 @@ static void routine_create_sensor_page(lv_obj_t *parent)
     voice, routine_text_font(&lv_font_montserrat_10), ROUTINE_COLOR_SECONDARY);
   lv_label_set_text_static(g_ui.voice_status, g_ui.text->voice_idle);
   lv_obj_set_pos(g_ui.voice_status, 10, 8);
+  lv_obj_set_width(g_ui.voice_status, 350);  /* 限制宽度避免与按钮重叠 */
+  lv_label_set_long_mode(g_ui.voice_status, LV_LABEL_LONG_SCROLL_CIRCULAR);
+
+  /* 在线/离线模式切换按钮 - 右上角 */
+  g_ui.voice_mode_button = lv_button_create(voice);
+  lv_obj_set_pos(g_ui.voice_mode_button, 380, 8);
+  lv_obj_set_size(g_ui.voice_mode_button, 70, 28);
+  lv_obj_set_style_bg_color(g_ui.voice_mode_button, ROUTINE_COLOR_MUTED, 0);
+  lv_obj_set_style_radius(g_ui.voice_mode_button, 4, 0);
+  lv_obj_add_event_cb(g_ui.voice_mode_button, routine_voice_mode_button_cb,
+                      LV_EVENT_CLICKED, NULL);
+  g_ui.voice_mode_label = routine_create_label(
+    g_ui.voice_mode_button, routine_text_font(&lv_font_montserrat_10),
+    ROUTINE_COLOR_TEXT);
+  lv_label_set_text_static(g_ui.voice_mode_label, g_ui.text->voice_mode_offline);
+  lv_obj_center(g_ui.voice_mode_label);
+
   g_ui.voice_button = lv_button_create(voice);
-  lv_obj_set_pos(g_ui.voice_button, 330, 8);
-  lv_obj_set_size(g_ui.voice_button, 124, 44);
+  lv_obj_set_pos(g_ui.voice_button, 10, 28);  /* 左下方 */
+  lv_obj_set_size(g_ui.voice_button, 124, 32);
   lv_obj_set_style_bg_color(g_ui.voice_button, ROUTINE_COLOR_BLUE, 0);
   lv_obj_set_style_radius(g_ui.voice_button, 5, 0);
   lv_obj_add_event_cb(g_ui.voice_button, routine_voice_button_cb,
@@ -1306,8 +1418,8 @@ static void routine_create_sensor_page(lv_obj_t *parent)
   lv_obj_center(g_ui.voice_button_label);
   g_ui.voice_result = routine_create_label(
     voice, routine_text_font(&lv_font_montserrat_8), ROUTINE_COLOR_ORANGE);
-  lv_obj_set_pos(g_ui.voice_result, 10, 34);
-  lv_obj_set_width(g_ui.voice_result, 306);
+  lv_obj_set_pos(g_ui.voice_result, 144, 32);  /* 语音按钮右侧 */
+  lv_obj_set_width(g_ui.voice_result, 300);
   lv_label_set_long_mode(g_ui.voice_result, LV_LABEL_LONG_WRAP);
   lv_label_set_text_static(g_ui.voice_result, g_ui.text->voice_demo);
 }
@@ -1699,6 +1811,43 @@ void routine_ui_update(const struct routine_snapshot_s *snapshot)
     }
 
   g_ui.snapshot = *snapshot;
+
+  /* 同步语音模式状态（从配置文件读取）*/
+  static uint32_t last_check_generation = 0;
+  if (snapshot->config_generation != last_check_generation)
+    {
+      struct routine_settings_s settings;
+      if (routine_config_load(&settings) == 0)
+        {
+          bool config_online = (settings.voice_mode == ROUTINE_VOICE_MODE_ONLINE);
+          if (g_ui.voice_online_mode != config_online)
+            {
+              /* 配置变化，更新UI */
+              g_ui.voice_online_mode = config_online;
+
+              if (g_ui.voice_mode_label != NULL)
+                {
+                  lv_label_set_text_static(g_ui.voice_mode_label,
+                                          g_ui.voice_online_mode ?
+                                          g_ui.text->voice_mode_online :
+                                          g_ui.text->voice_mode_offline);
+                  lv_obj_center(g_ui.voice_mode_label);
+                }
+
+              if (g_ui.voice_mode_button != NULL)
+                {
+                  lv_obj_set_style_bg_color(g_ui.voice_mode_button,
+                                            g_ui.voice_online_mode ?
+                                            ROUTINE_COLOR_GREEN : ROUTINE_COLOR_MUTED, 0);
+                }
+
+              syslog(LOG_INFO, "UI: Voice mode synced to %s\n",
+                     g_ui.voice_online_mode ? "ONLINE" : "OFFLINE");
+            }
+        }
+      last_check_generation = snapshot->config_generation;
+    }
+
   if (snapshot->clock_valid)
     {
       snprintf(g_ui.time_buffer, sizeof(g_ui.time_buffer), "%02u:%02u",
@@ -2089,4 +2238,9 @@ void routine_ui_deinit(void)
       lv_binfont_destroy(g_ui.text_font);
     }
   memset(&g_ui, 0, sizeof(g_ui));
+}
+
+bool routine_ui_get_voice_online_mode(void)
+{
+  return g_ui.voice_online_mode;
 }

@@ -245,7 +245,56 @@
       "collection_mode": "cli",
       "health": "ok",
       "model": "claude-opus-5"
+    },
+    {
+      "session_id": "c9585b69-e7ba-4e40-90ab-6dddc10c4edb",
+      "tool": "claude-code",
+      "started_at": "2026-10-21T14:04:45.929Z",
+      "last_event_at": "2026-10-21T16:18:21.573Z",
+      "event_count": 18,
+      "raw_event_count": 613,
+      "file_path": "logs/jxgfc/2026-10-22/claude-code__c9585b69-e7ba-4e40-90ab-6dddc10c4edb.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "claude-opus-5",
+      "redacted_count_total": 25
+    },
+    {
+      "session_id": "2f5c7dd6-b092-4d84-b67c-acb9079f38c1",
+      "tool": "claude-code",
+      "started_at": "2026-10-22T07:53:34.096Z",
+      "last_event_at": "2026-10-22T08:37:37.499Z",
+      "event_count": 531,
+      "raw_event_count": 715,
+      "file_path": "logs/jxgfc/2026-10-22/claude-code__2f5c7dd6-b092-4d84-b67c-acb9079f38c1.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "claude-opus-5-5"
+    },
+    {
+      "session_id": "a91606db-9e7b-4fdc-8a77-25ad314c4747",
+      "tool": "claude-code",
+      "started_at": "2026-10-22T09:02:16.920Z",
+      "last_event_at": "2026-10-22T11:58:22.057Z",
+      "event_count": 1015,
+      "raw_event_count": 1485,
+      "file_path": "logs/jxgfc/2026-10-22/claude-code__a91606db-9e7b-4fdc-8a77-25ad314c4747.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "claude-opus-5-5"
+    },
+    {
+      "session_id": "6b3b41d5-dc33-446b-9e3a-a6dff629a11b",
+      "tool": "claude-code",
+      "started_at": "2026-10-23T09:32:18.081Z",
+      "last_event_at": "2026-10-25T03:27:40.250Z",
+      "event_count": 71,
+      "raw_event_count": 2782,
+      "file_path": "logs/jxgfc/2026-10-25/claude-code__6b3b41d5-dc33-446b-9e3a-a6dff629a11b.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "claude-opus-5-5"
     }
   ],
-  "updated_at": "2026-08-24T18:09:20.405Z"
+  "updated_at": "2026-10-25T03:27:40.252Z"
 }

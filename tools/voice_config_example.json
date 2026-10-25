@@ -1,0 +1,32 @@
+# 语音小智配置文件示例
+# 复制到 /data/voice_config.json 并修改
+
+{
+  "mimo": {
+    "enabled": true,
+    "api_key": "tp-your-mimo-api-key-here",
+    "model": "mimo-v2.6",
+    "tts_voice": "冰糖"
+  },
+  "vad": {
+    "sample_rate": 16000,
+    "frame_samples": 320,
+    "minimum_rms": 350,
+    "minimum_peak": 900,
+    "speech_frames": 3,
+    "silence_frames": 20
+  },
+  "recording": {
+    "max_duration_ms": 7000,
+    "post_speech_ms": 500
+  },
+  "audio": {
+    "capture_device": "/dev/audio/pcm1c",
+    "playback_device": "/dev/audio/pcm0p"
+  },
+  "wakewords": [
+    "你好Vela",
+    "你好vela",
+    "你好维拉"
+  ]
+}

@@ -157,7 +157,7 @@
 #define AGENT_LLM_MIMO_HOST "api.xiaomimimo.com"
 #define AGENT_LLM_MIMO_TOKEN_PLAN_HOST "token-plan-cn.xiaomimimo.com"
 #define AGENT_LLM_MIMO_PATH "/v1/chat/completions"
-#define AGENT_LLM_MIMO_MODEL "mimo-v2.5"
+#define AGENT_LLM_MIMO_MODEL "mimo-v2.6-pro"
 #define AGENT_LLM_MIMO_MAX_TOKENS 32768
 #define AGENT_LLM_MIMO_TEMPERATURE 1.0
 #define AGENT_LLM_MIMO_TOP_P 0.95

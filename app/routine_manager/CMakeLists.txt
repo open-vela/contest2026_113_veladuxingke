@@ -17,7 +17,11 @@ if(CONFIG_CONTEST2026_113_ROUTINE_MANAGER)
     list(APPEND SRCS
       audio_service.c
       voice_recognizer_demo.c
-      voice_reply.c)
+      voice_reply.c
+      mimo_integration.c
+      voice_recognizer_online.c
+      vad_detector.c
+      voice_wakeup_service.c)
 
     if(CONFIG_ROUTINE_MANAGER_KWS)
       list(APPEND SRCS
@@ -42,6 +46,16 @@ if(CONFIG_CONTEST2026_113_ROUTINE_MANAGER)
     ${CONFIG_CONTEST2026_113_ROUTINE_MANAGER}
     SRCS
     ${SRCS})
+
+  # 链接 ai_agent 库用于 MiMo LLM 调用
+  if(CONFIG_ROUTINE_MANAGER_VOICE)
+    target_link_libraries(apps_${CONFIG_ROUTINE_MANAGER_PROGNAME} PRIVATE ai_agent)
+    target_include_directories(apps_${CONFIG_ROUTINE_MANAGER_PROGNAME}
+      PRIVATE
+      ${APPDIR}/../packages/ai_agent/include
+      ${APPDIR}/../packages/ai_agent/src/llm
+      ${APPDIR}/system/system/cJSON)
+  endif()
 
   if(CONFIG_ROUTINE_MANAGER_KWS)
     target_include_directories(

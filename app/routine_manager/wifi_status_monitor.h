@@ -23,4 +23,7 @@ void wifi_status_monitor_stop(void);
 /* 触发立即检查（配置保存后调用） */
 void wifi_status_monitor_check_now(void);
 
+/* 检查是否有网络连接（有 IP 地址） */
+bool wifi_status_monitor_is_connected(void);
+
 #endif /* __APP_ROUTINE_MANAGER_WIFI_STATUS_MONITOR_H */

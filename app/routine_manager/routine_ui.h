@@ -53,6 +53,7 @@ int routine_ui_init(lv_display_t *display,
 void routine_ui_update(const struct routine_snapshot_s *snapshot);
 void routine_ui_voice_update(
   const struct audio_service_snapshot_s *snapshot);
+bool routine_ui_get_voice_online_mode(void);
 int routine_ui_enqueue_due(const struct routine_due_event_s *event);
 void routine_ui_remove_due(const struct routine_due_event_s *event);
 void routine_ui_clear_due(void);

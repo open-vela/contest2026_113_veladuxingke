@@ -153,6 +153,11 @@ struct audio_service_s
   bool start_requested;
   bool worker_active;
   bool shutdown_requested;
+
+  /* 新增：在线语音模式支持 */
+  void *mimo_service;           /* struct mimo_service_s pointer */
+  bool online_mode;
+  bool mimo_initialized;
 };
 
 int audio_service_initialize(FAR struct audio_service_s *service,
@@ -176,6 +181,10 @@ int audio_service_update_sensors(
 int audio_service_get_snapshot(
   FAR struct audio_service_s *service,
   FAR struct audio_service_snapshot_s *snapshot);
+int audio_service_update_voice_config(
+  FAR struct audio_service_s *service,
+  bool online_mode,
+  FAR const void *mimo_config);
 int audio_service_shutdown(FAR struct audio_service_s *service);
 int audio_service_selftest(void);
 

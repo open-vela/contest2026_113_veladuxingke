@@ -20,6 +20,8 @@ endif
 
 ifeq ($(CONFIG_ROUTINE_MANAGER_VOICE),y)
 CSRCS  += audio_service.c voice_recognizer_demo.c voice_reply.c
+CSRCS  += mimo_integration.c voice_recognizer_online.c
+CSRCS  += vad_detector.c voice_wakeup_service.c
 ifeq ($(CONFIG_ROUTINE_MANAGER_KWS),y)
 CXXEXT  = .cc
 CXXSRCS += voice_recognizer_kws.cc kws_frontend.cc kws_model_data.cc

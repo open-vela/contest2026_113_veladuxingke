@@ -22,6 +22,9 @@
 #ifdef CONFIG_ROUTINE_MANAGER_KWS_CAPTURE
 #  include "kws_capture.h"
 #endif
+#ifdef CONFIG_ROUTINE_MANAGER_VOICE
+#  include "mimo_integration.h"
+#endif
 #include "routine_model.h"
 #include "routine_config.h"
 #include "routine_storage.h"
@@ -537,7 +540,48 @@ static int routine_reload_config(struct routine_app_s *app, bool notify)
       return ret;
     }
 
+  /* 检查语音配置是否改变 */
+  bool voice_config_changed = false;
+#ifdef CONFIG_ROUTINE_MANAGER_VOICE
+  if (app->audio_started)
+    {
+      voice_config_changed =
+          (app->settings.voice_mode != settings.voice_mode) ||
+          (app->settings.mimo_enabled != settings.mimo_enabled) ||
+          (strcmp(app->settings.mimo_api_key, settings.mimo_api_key) != 0) ||
+          (strcmp(app->settings.mimo_model, settings.mimo_model) != 0) ||
+          (strcmp(app->settings.mimo_tts_voice, settings.mimo_tts_voice) != 0);
+    }
+#endif
+
   app->settings = settings;
+
+#ifdef CONFIG_ROUTINE_MANAGER_VOICE
+  /* 更新语音模式配置（仅在配置改变时） */
+  if (app->audio_started && voice_config_changed)
+    {
+      bool online_mode = (settings.voice_mode == ROUTINE_VOICE_MODE_ONLINE);
+      if (online_mode && settings.mimo_enabled && strlen(settings.mimo_api_key) > 0)
+        {
+          struct mimo_config_s mimo_config;
+          memset(&mimo_config, 0, sizeof(mimo_config));
+          strncpy(mimo_config.api_key, settings.mimo_api_key, sizeof(mimo_config.api_key) - 1);
+          strncpy(mimo_config.model, settings.mimo_model, sizeof(mimo_config.model) - 1);
+          strncpy(mimo_config.tts_voice, settings.mimo_tts_voice, sizeof(mimo_config.tts_voice) - 1);
+          mimo_config.enabled = settings.mimo_enabled;
+
+          audio_service_update_voice_config(&app->audio, online_mode, &mimo_config);
+          syslog(LOG_INFO, "routine_mgr: voice mode updated to ONLINE (MiMo: %s)\n",
+                 settings.mimo_model);
+        }
+      else
+        {
+          audio_service_update_voice_config(&app->audio, false, NULL);
+          syslog(LOG_INFO, "routine_mgr: voice mode updated to OFFLINE\n");
+        }
+    }
+#endif
+
   if (ret == 0)
     {
       return 0;

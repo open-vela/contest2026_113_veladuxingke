@@ -130,6 +130,13 @@ void routine_config_defaults(FAR struct routine_settings_s *settings)
     ROUTINE_DEFAULT_TEMPERATURE_HIGH_X100;
   settings->history_interval_seconds =
     ROUTINE_DEFAULT_HISTORY_INTERVAL_SECONDS;
+
+  /* 语音模式默认为离线 */
+  settings->voice_mode = ROUTINE_VOICE_MODE_OFFLINE;
+  settings->mimo_enabled = false;
+  strlcpy(settings->mimo_model, "mimo-v2.6-pro", sizeof(settings->mimo_model));
+  strlcpy(settings->mimo_tts_voice, "冰糖", sizeof(settings->mimo_tts_voice));
+
   for (i = 0; i < ROUTINE_SCHEDULE_MAX; i++)
     {
       settings->schedule[i].id = i;
@@ -295,6 +302,48 @@ int routine_config_load(FAR struct routine_settings_s *settings)
         }
     }
 
+  /* 加载语音模式配置 */
+  FAR const cJSON *voice_mode_item = cJSON_GetObjectItemCaseSensitive(root, "voice_mode");
+  if (voice_mode_item != NULL && cJSON_IsString(voice_mode_item))
+    {
+      if (strcmp(voice_mode_item->valuestring, "online") == 0)
+        {
+          parsed.voice_mode = ROUTINE_VOICE_MODE_ONLINE;
+        }
+      else
+        {
+          parsed.voice_mode = ROUTINE_VOICE_MODE_OFFLINE;
+        }
+    }
+
+  /* 加载 MiMo 配置 */
+  FAR const cJSON *mimo_enabled_item = cJSON_GetObjectItemCaseSensitive(root, "mimo_enabled");
+  if (mimo_enabled_item != NULL && cJSON_IsBool(mimo_enabled_item))
+    {
+      parsed.mimo_enabled = cJSON_IsTrue(mimo_enabled_item);
+    }
+
+  FAR const cJSON *mimo_api_key_item = cJSON_GetObjectItemCaseSensitive(root, "mimo_api_key");
+  if (mimo_api_key_item != NULL && cJSON_IsString(mimo_api_key_item))
+    {
+      strlcpy(parsed.mimo_api_key, mimo_api_key_item->valuestring,
+              sizeof(parsed.mimo_api_key));
+    }
+
+  FAR const cJSON *mimo_model_item = cJSON_GetObjectItemCaseSensitive(root, "mimo_model");
+  if (mimo_model_item != NULL && cJSON_IsString(mimo_model_item))
+    {
+      strlcpy(parsed.mimo_model, mimo_model_item->valuestring,
+              sizeof(parsed.mimo_model));
+    }
+
+  FAR const cJSON *mimo_tts_voice_item = cJSON_GetObjectItemCaseSensitive(root, "mimo_tts_voice");
+  if (mimo_tts_voice_item != NULL && cJSON_IsString(mimo_tts_voice_item))
+    {
+      strlcpy(parsed.mimo_tts_voice, mimo_tts_voice_item->valuestring,
+              sizeof(parsed.mimo_tts_voice));
+    }
+
   *settings = parsed;
   ret = OK;
 
@@ -353,6 +402,12 @@ int routine_config_save(FAR const struct routine_settings_s *settings)
         &settings->schedule[i];
       size_t length = strnlen(item->text, ROUTINE_SCHEDULE_TEXT_MAX + 1);
 
+      /* id=0 表示空槽位，跳过验证 */
+      if (item->id == 0)
+        {
+          continue;
+        }
+
       if (item->id >= ROUTINE_SCHEDULE_MAX || ids[item->id] ||
           item->hour > 23 || item->minute > 59 ||
           !routine_config_utf8(item->text, length))
@@ -378,6 +433,25 @@ int routine_config_save(FAR const struct routine_settings_s *settings)
                           settings->temperature_high_x100);
   cJSON_AddNumberToObject(root, "history_interval_seconds",
                           settings->history_interval_seconds);
+
+  /* 保存语音模式配置 */
+  cJSON_AddStringToObject(root, "voice_mode",
+                          settings->voice_mode == ROUTINE_VOICE_MODE_ONLINE ? "online" : "offline");
+  cJSON_AddBoolToObject(root, "mimo_enabled", settings->mimo_enabled);
+
+  if (strlen(settings->mimo_api_key) > 0)
+    {
+      cJSON_AddStringToObject(root, "mimo_api_key", settings->mimo_api_key);
+    }
+  if (strlen(settings->mimo_model) > 0)
+    {
+      cJSON_AddStringToObject(root, "mimo_model", settings->mimo_model);
+    }
+  if (strlen(settings->mimo_tts_voice) > 0)
+    {
+      cJSON_AddStringToObject(root, "mimo_tts_voice", settings->mimo_tts_voice);
+    }
+
   cJSON_AddItemToObject(root, "schedule", schedule);
   schedule = NULL;
 

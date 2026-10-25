@@ -15,6 +15,7 @@
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include <system/nxplayer.h>
 #include <system/nxrecorder.h>
@@ -22,6 +23,8 @@
 #include "audio_service.h"
 #include "environment_service.h"
 #include "voice_recognizer.h"
+#include "voice_recognizer_online.h"
+#include "mimo_integration.h"
 
 #define AUDIO_SERVICE_CAPTURE_CHANNELS  1
 #define AUDIO_SERVICE_PLAY_CHANNELS     2
@@ -134,7 +137,13 @@ static int audio_service_capture(FAR struct audio_service_s *service,
 
   delay.tv_sec = 0;
   delay.tv_nsec = AUDIO_SERVICE_POLL_MS * 1000000;
-  for (elapsed = 0; elapsed < service->config.record_ms;
+
+  /* 固定录音时长：10秒（足够说完整句话）
+   * VAD 在当前音频驱动下效果不佳，改用固定时长
+   */
+  uint32_t max_record_ms = 10000;  /* 10 秒 */
+
+  for (elapsed = 0; elapsed < max_record_ms;
        elapsed += AUDIO_SERVICE_POLL_MS)
     {
       if (audio_service_cancelled(service, generation))
@@ -550,17 +559,197 @@ static void audio_service_process(
 
   audio_service_publish(service, generation, AUDIO_SERVICE_PROCESSING,
                         AUDIO_SERVICE_ERROR_NONE);
-  ret = voice_recognizer_recognize(service->config.record_path,
-                                   &recognition);
-  unlink(service->config.record_path);
-  if (audio_service_cancelled(service, generation))
+
+  /* 根据模式选择识别器 */
+  syslog(LOG_INFO, "Voice recognition check: online_mode=%d mimo_initialized=%d mimo_service=%p\n",
+         service->online_mode, service->mimo_initialized, service->mimo_service);
+
+  if (service->online_mode && service->mimo_initialized && service->mimo_service != NULL)
     {
-      audio_service_finish_operation(service, generation, AUDIO_SERVICE_OUTCOME_CANCELLED);
-      return;
+      /* 在线模式：使用 MiMo 智能识别 */
+      struct voice_recognition_online_result_s online_result;
+
+      /* 设置传感器数据到 MiMo 服务（用于智能对话）*/
+      struct mimo_sensor_data_s sensor_data;
+      memset(&sensor_data, 0, sizeof(sensor_data));
+
+      pthread_mutex_lock(&service->lock);
+      sensor_data.temperature_x100 = service->sensor.values.temperature_x100;
+      sensor_data.humidity_x100 = service->sensor.values.humidity_x100;
+      sensor_data.light_x10 = service->sensor.values.light_x10;
+      sensor_data.eco2_ppm = service->sensor.values.eco2_ppm;
+      sensor_data.tvoc_ppb = service->sensor.values.tvoc_ppb;
+      sensor_data.valid = (service->sensor.live_mask != 0);
+      pthread_mutex_unlock(&service->lock);
+
+      mimo_service_set_sensor_data((struct mimo_service_s *)service->mimo_service, &sensor_data);
+
+      syslog(LOG_INFO, "Using ONLINE voice recognition mode\n");
+      ret = voice_recognizer_online_recognize(
+              service->config.record_path,
+              (struct mimo_service_s *)service->mimo_service,
+              true,
+              &online_result);
+
+      unlink(service->config.record_path);
+
+      if (audio_service_cancelled(service, generation))
+        {
+          audio_service_finish_operation(service, generation, AUDIO_SERVICE_OUTCOME_CANCELLED);
+          return;
+        }
+
+      if (ret < 0 || !online_result.success)
+        {
+          audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
+                                AUDIO_SERVICE_ERROR_NO_VOICE);
+          return;
+        }
+
+      /* 处理在线识别结果 */
+      if (online_result.is_wake_word)
+        {
+          /* 检测到唤醒词，播报确认 */
+          syslog(LOG_INFO, "Wake word detected!\n");
+          /* TODO: 播报唤醒确认音 "嗯，我在听" */
+          audio_service_finish_operation(service, generation,
+                                         AUDIO_SERVICE_OUTCOME_COMPLETED);
+          return;
+        }
+      else if (online_result.command == VOICE_COMMAND_ONLINE_CHAT)
+        {
+          /* MiMo 智能对话 */
+          syslog(LOG_INFO, "MiMo chat response: %s\n", online_result.response);
+
+          /* 使用 MiMo TTS 播报回答 */
+          struct mimo_tts_result_s tts_result;
+          ret = mimo_tts((struct mimo_service_s *)service->mimo_service,
+                        online_result.response,
+                        &tts_result);
+
+          if (ret == OK && tts_result.success)
+            {
+              /* 播放 TTS 音频 - 使用与原有播报相同的方式 */
+              audio_service_publish(service, generation, AUDIO_SERVICE_SPEAKING,
+                                    AUDIO_SERVICE_ERROR_NONE);
+
+              /* 创建播放器并播放 PCM */
+              service->player = nxplayer_create();
+              if (service->player != NULL)
+                {
+                  uint16_t volume = audio_service_nxplayer_volume(service->config.volume);
+                  nxplayer_setvolume(service->player, volume);
+
+                  /* 播放 16kHz 16-bit mono PCM */
+                  ret = nxplayer_playraw(service->player, tts_result.audio_path,
+                                        AUDIO_FMT_PCM, AUDIO_FMT_UNDEF,
+                                        1, /* mono */
+                                        AUDIO_SERVICE_BITS_PER_SAMPLE,
+                                        AUDIO_SERVICE_SAMPLE_RATE,
+                                        AUDIO_SERVICE_PLAY_CHMAP);
+
+                  if (ret == OK)
+                    {
+                      /* 等待播放完成 */
+                      struct nxplayer_status_s status;
+                      uint32_t timeout_ms = tts_result.duration_ms + 5000;
+                      uint32_t elapsed = 0;
+                      struct timespec delay = {0, AUDIO_SERVICE_POLL_MS * 1000000L};
+
+                      while (elapsed < timeout_ms &&
+                            nxplayer_getstatus(service->player, &status) >= 0 &&
+                            status.state != NXPLAYER_STATE_IDLE &&
+                            !audio_service_cancelled(service, generation))
+                        {
+                          nanosleep(&delay, NULL);
+                          elapsed += AUDIO_SERVICE_POLL_MS;
+                        }
+
+                      nxplayer_stop(service->player);
+                      nxplayer_release(service->player);
+                      service->player = NULL;
+
+                      audio_service_finish_operation(service, generation,
+                                                     AUDIO_SERVICE_OUTCOME_COMPLETED);
+                    }
+                  else
+                    {
+                      nxplayer_release(service->player);
+                      service->player = NULL;
+                      audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
+                                            AUDIO_SERVICE_ERROR_PLAYBACK);
+                    }
+                }
+              else
+                {
+                  audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
+                                        AUDIO_SERVICE_ERROR_PLAYBACK);
+                }
+
+              /* 清理 TTS 临时文件 */
+              unlink(tts_result.audio_path);
+              return;
+            }
+          else
+            {
+              syslog(LOG_ERR, "MiMo TTS failed\n");
+              audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
+                                    AUDIO_SERVICE_ERROR_REPLY_RESOURCE);
+              return;
+            }
+        }
+      else
+        {
+          /* 固定指令，转换为离线命令继续处理 */
+          switch (online_result.command)
+            {
+              case VOICE_COMMAND_ONLINE_QUERY_TEMPERATURE:
+                recognition.command = VOICE_COMMAND_QUERY_TEMPERATURE;
+                break;
+              case VOICE_COMMAND_ONLINE_QUERY_HUMIDITY:
+                recognition.command = VOICE_COMMAND_QUERY_HUMIDITY;
+                break;
+              case VOICE_COMMAND_ONLINE_QUERY_LIGHT:
+                recognition.command = VOICE_COMMAND_QUERY_LIGHT;
+                break;
+              case VOICE_COMMAND_ONLINE_QUERY_AIR_QUALITY:
+                recognition.command = VOICE_COMMAND_QUERY_AIR_QUALITY;
+                break;
+              default:
+                recognition.command = VOICE_COMMAND_UNKNOWN;
+                break;
+            }
+          recognition.score = online_result.score;
+          recognition.semantic_verified = true;
+
+          /* 继续使用原有的传感器查询逻辑 */
+        }
+    }
+  else
+    {
+      /* 离线模式：使用 KWS 固定指令识别 */
+      syslog(LOG_INFO, "Using OFFLINE voice recognition mode\n");
+      ret = voice_recognizer_recognize(service->config.record_path,
+                                       &recognition);
+      unlink(service->config.record_path);
+
+      if (audio_service_cancelled(service, generation))
+        {
+          audio_service_finish_operation(service, generation, AUDIO_SERVICE_OUTCOME_CANCELLED);
+          return;
+        }
+
+      if (ret < 0)
+        {
+          audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
+                                AUDIO_SERVICE_ERROR_NO_VOICE);
+          return;
+        }
     }
 
-  if (ret < 0 || audio_service_query_request_spec(
-                   recognition.command, &request, &required, &reply_type) < 0)
+  /* 处理固定指令查询（离线模式或在线模式的固定指令） */
+  if (audio_service_query_request_spec(
+        recognition.command, &request, &required, &reply_type) < 0)
     {
       audio_service_publish(service, generation, AUDIO_SERVICE_ERROR,
                             AUDIO_SERVICE_ERROR_NO_VOICE);
@@ -787,6 +976,12 @@ int audio_service_initialize(FAR struct audio_service_s *service,
 
   service->thread_created = true;
   service->initialized = true;
+
+  /* 初始化在线语音支持 */
+  service->online_mode = false;
+  service->mimo_service = NULL;
+  service->mimo_initialized = false;
+
   return OK;
 }
 
@@ -1149,6 +1344,14 @@ int audio_service_shutdown(FAR struct audio_service_s *service)
       pthread_join(service->thread, NULL);
     }
 
+  /* 清理 MiMo 服务 */
+  if (service->mimo_service != NULL)
+    {
+      mimo_service_shutdown((struct mimo_service_s *)service->mimo_service);
+      free(service->mimo_service);
+      service->mimo_service = NULL;
+    }
+
   unlink(service->config.record_path);
   unlink(service->config.reply_path);
   pthread_cond_destroy(&service->cond);
@@ -1235,5 +1438,64 @@ int audio_service_selftest(void)
       return -EINVAL;
     }
 
+  return OK;
+}
+
+/****************************************************************************
+ * Name: audio_service_update_voice_config
+ *
+ * Description:
+ *   更新语音模式配置（离线/在线模式）
+ *
+ ****************************************************************************/
+
+int audio_service_update_voice_config(
+  FAR struct audio_service_s *service,
+  bool online_mode,
+  FAR const void *mimo_config)
+{
+  if (service == NULL || !service->initialized)
+    {
+      return -EINVAL;
+    }
+
+  pthread_mutex_lock(&service->lock);
+
+  service->online_mode = online_mode;
+
+  /* 如果启用在线模式且提供了 MiMo 配置 */
+  if (online_mode && mimo_config != NULL)
+    {
+      /* 分配 MiMo 服务实例（如果尚未分配） */
+      if (service->mimo_service == NULL)
+        {
+          service->mimo_service = malloc(sizeof(struct mimo_service_s));
+          if (service->mimo_service == NULL)
+            {
+              pthread_mutex_unlock(&service->lock);
+              syslog(LOG_ERR, "Failed to allocate MiMo service\n");
+              return -ENOMEM;
+            }
+        }
+
+      /* 初始化或更新 MiMo 服务 */
+      int ret = mimo_service_init((struct mimo_service_s *)service->mimo_service,
+                                  (const struct mimo_config_s *)mimo_config);
+      if (ret < 0)
+        {
+          pthread_mutex_unlock(&service->lock);
+          syslog(LOG_ERR, "Failed to initialize MiMo service: %d\n", ret);
+          return ret;
+        }
+
+      service->mimo_initialized = true;
+      syslog(LOG_INFO, "Voice mode updated to ONLINE\n");
+    }
+  else
+    {
+      syslog(LOG_INFO, "Voice mode updated to OFFLINE\n");
+    }
+
+  pthread_mutex_unlock(&service->lock);
   return OK;
 }

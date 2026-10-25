@@ -9,7 +9,7 @@ STACKSIZE = $(CONFIG_CONTEST2026_113_LAN_PANEL_STACKSIZE)
 MODULE    = $(CONFIG_CONTEST2026_113_LAN_PANEL)
 
 MAINSRC = lan_panel_main.c
-CSRCS   = lan_http.c lan_auth.c wifi_config.c
+CSRCS   = lan_http.c lan_auth.c wifi_config.c voice_config_api.c
 
 include $(APPDIR)/Application.mk
 endif

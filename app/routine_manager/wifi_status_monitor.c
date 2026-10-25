@@ -324,3 +324,16 @@ void wifi_status_monitor_check_now(void)
       lv_timer_ready(g_monitor.timer);
     }
 }
+
+/* 检查是否有网络连接（有 IP 地址） */
+bool wifi_status_monitor_is_connected(void)
+{
+  struct wifi_status_s status;
+
+  if (!wifi_read_status(&status))
+    {
+      return false;
+    }
+
+  return (status.ipv4_ready && status.associated);
+}
